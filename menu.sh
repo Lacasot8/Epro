@@ -14,9 +14,9 @@ LANGUAGE_FILE="${BYPASS_DIR}/language"
 HCR_PORT="8880"
 HCR_SERVICE="hcr-8880.service"
 HCR_SSH_TARGET="127.0.0.1:22"
-# O hcr-server 0.1.29 aceita até 30s. O cliente HCR do APK usa keepalive
-# de 20s; manter 30s evita a corrida sem rejeitar a configuração da unit.
-HCR_DOWNLOAD_POLL_TIMEOUT="30s"
+# O cliente HCR mantém sessões de download ociosas enquanto aguarda novos
+# polls. O padrão curto do servidor derruba a sessão em redes móveis lentas.
+HCR_DOWNLOAD_POLL_TIMEOUT="120s"
 # 16 KiB é o frame mais compatível com clientes HCR e redes móveis.
 HCR_DOWNLOAD_FRAME="16384"
 HCR_MAX_CONNECTIONS="4096"
@@ -824,6 +824,9 @@ Environment=HCR_SESSION_IDLE_TIMEOUT_SECONDS=86400
 Environment=HCR_SESSION_IDLE_TIMEOUT=86400
 Environment=HCR_IDLE_TIMEOUT_SECONDS=86400
 Environment=HCR_KEEPALIVE_INTERVAL_SECONDS=20
+# Não deixe o systemd encerrar uma sessão HCR longa por limite de runtime.
+RuntimeMaxSec=infinity
+TimeoutStartSec=infinity
 EOF
     systemctl daemon-reload >/dev/null 2>&1 || return 1
     hcr_apply_ssh_keepalive || return 1
@@ -853,6 +856,8 @@ Type=simple
 ExecStart=${BINARY} ${ARGS}
 Restart=always
 RestartSec=2
+RuntimeMaxSec=infinity
+TimeoutStartSec=infinity
 TimeoutStopSec=10
 User=root
 WorkingDirectory=${BYPASS_DIR}
