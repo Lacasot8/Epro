@@ -1,7 +1,7 @@
 #!/bin/bash
 # Azpro Installer - Version v3
 
-REPO_URL="https://github.com/Lacasot8/Awpro.git"
+REPO_URL="https://github.com/Lacasot8/Epro.git"
 REPO_BRANCH="main"
 CMD_NAME="azpro"
 TOTAL_STEPS=7
@@ -77,7 +77,7 @@ done
 clear
 echo -e "${CYAN}${BOLD}    A Z P R O  V E R S I O N  F R E E${NC}"
 echo -e "${BLUE}${BOLD}----------------------------------------${NC}"
-log_info "Iniciando instalação do Azpro v3.1.0 (🇧🇷)..."
+log_info "Iniciando instalação do Azpro v3.1.0 (🦥).."
 
 # --- Etapa 1 ---
 show_progress "Verificando dependências..."
