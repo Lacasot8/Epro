@@ -25,8 +25,8 @@ Proxy multi-protocolo em Rust com suporte exclusivo para o protocolo xHTTP (Spli
 
 ```bash
 # Clonar ou copiar os arquivos para o servidor
-git clone https://github.com/Lacasx1/Azpro.git
-cd Azpro
+git clone https://github.com/Lacasot8/Epro.git
+cd Epro
 
 # Substituir os arquivos pelo v2.0
 cp menu.sh menu_original.sh.backup
@@ -40,16 +40,16 @@ chmod +x install.sh
 ## Uso
 
 ```bash
-azpro   # Único comando para abrir o menu deste proxy
+epro    # Comando principal para abrir o menu deste proxy
 ```
 
 ### Opção 01 — Configurar portas
 
 **[01] CONFIGURAR PORTAS** abre um submenu com **[01] ABRIR PORTA**, **[02] HCR ABRIR PORTA** e **[03] HCR INSTALAR / ATUALIZAR SERVIDOR**. A opção normal mantém o fluxo HTTP legado compatível com a opção 1 do AWProxy e pergunta se HTTPS/TLS deve ser ativado. A opção HCR é separada e usa o binário oficial `hcr-server` para Linux amd64. Se o binário não estiver presente em `/opt/mpro/hcr-server`, `/opt/hcr-server/hcr-server`, `/usr/local/bin/hcr-server` ou `/usr/bin/hcr-server`, o menu oferece baixar e instalar a versão oficial automaticamente (valida ELF64 amd64, guarda backup do binário anterior e pode usar outra origem via `HCR_SOURCE_URL`); recusando a instalação, o menu apenas mostra onde colocar o binário. Em seguida ele cria e inicia `hcr-8880.service` com transporte `plain` (sem TLS) e destino SSH `127.0.0.1:22`, detecta o formato de argumentos aceito pelo binário (`-listen/-target/-transport` ou `--port/--transport`) e tenta o formato alternativo se a porta não subir, verifica conflitos de porta, confirma que a 8880 está escutando e faz rollback da unit se o serviço falhar. Uma unit `hcr-8880.service` já existente nunca é sobrescrita: o menu só pergunta se deve iniciá-la. O handler HCR TLS legado do modo multiprotocolo não substitui este serviço HCR plain.
 
-Na opção 1, o handler segue o fluxo do WZPRO: envia `HTTP/1.1 101 Switching Protocols`, lê até 1024 bytes, envia `HTTP/1.1 200 <status>` e então seleciona o backend. Não envia o segundo `101` nem retransmite aquele buffer inicial ao backend. A sequência `101`, `101`, `200` com o mesmo texto e o encaminhamento do preâmbulo continuam reservados ao multiprotocolo quando ele está ativo para a porta. O texto `<status>` vem da configuração do serviço, por exemplo `Aznet`. Se “somente SSH” estiver ativa, encaminha ao SSH local (`127.0.0.1:22`); caso contrário, a seleção inspeciona os próximos bytes com `peek` por até 200 ms e escolhe SSH ou VPN local (`127.0.0.1:1194`). O padrão do Azpro é `@Azpro`.
+Na opção 1, o handler segue o fluxo do WZPRO: envia `HTTP/1.1 101 Switching Protocols`, lê até 1024 bytes, envia `HTTP/1.1 200 <status>` e então seleciona o backend. Não envia o segundo `101` nem retransmite aquele buffer inicial ao backend. A sequência `101`, `101`, `200` com o mesmo texto e o encaminhamento do preâmbulo continuam reservados ao multiprotocolo quando ele está ativo para a porta. O texto `<status>` vem da configuração do serviço, por exemplo `Epro`. Se “somente SSH” estiver ativa, encaminha ao SSH local (`127.0.0.1:22`); caso contrário, a seleção inspeciona os próximos bytes com `peek` por até 200 ms e escolhe SSH ou VPN local (`127.0.0.1:1194`). O padrão do Epro é `@Epro`.
 
-No menu, escolha **[06] ATUALIZAR PELO GITHUB** para baixar a versão mais recente do branch `main`, recompilar os binários e atualizar o menu. Os serviços Azpro que estavam ativos são parados durante a troca e iniciados novamente ao final; as configurações systemd e portas desligadas são preservadas. O instalador reaproveita o cache de compilação em `/var/cache/azpro/cargo-target`, instala dependências somente quando faltam e usa paralelismo limitado pela memória disponível. A primeira compilação ainda pode demorar mais; o tempo varia conforme VPS, rede e cache.
+No menu, escolha **[06] ATUALIZAR PELO GITHUB** para baixar a versão mais recente do branch `main`, recompilar os binários e atualizar o menu. Os serviços Epro que estavam ativos são parados durante a troca e iniciados novamente ao final; as configurações systemd e portas desligadas são preservadas. O instalador reaproveita o cache de compilação em `/var/cache/epro/cargo-target`, instala dependências somente quando faltam e usa paralelismo limitado pela memória disponível. A primeira compilação ainda pode demorar mais; o tempo varia conforme VPS, rede e cache.
 
 ### Menu v2.0
 
@@ -170,7 +170,7 @@ ss -tlnp | grep 443
 
 ## Opção 07 — Multiprotocolo + Status HTTP + TCP
 
-A opção **[07] MULTIPROTOCOLO + STATUS + TCP** lista as portas numéricas Azpro ativas e permite ativar/desativar o dispatcher de protocolos em cada porta. A tecla **H** abre **ATIVAR SUPORTE AO HCR**, com estado ON/OFF independente em cada porta. Ativar HCR não cria, remove nem altera o marcador `multiprotocol-PORT.enabled`; quando o multiprotocolo está OFF, frames HCR são encaminhados ao servidor HCR e o restante continua no protocolo da opção 1. Quando os dois estão ON, frames HCR válidos são tratados antes do dispatcher e os demais protocolos continuam no dispatcher. A detecção aguarda até 8 segundos por um cabeçalho HCR completo de 62 bytes, aceitando frames fragmentados em redes móveis. O serviço HCR oficial da porta 8880 precisa estar ativo. Nenhuma dessas opções abre ou fecha portas.
+A opção **[07] MULTIPROTOCOLO + STATUS + TCP** lista as portas numéricas Epro ativas e permite ativar/desativar o dispatcher de protocolos em cada porta. A tecla **H** abre **ATIVAR SUPORTE AO HCR**, com estado ON/OFF independente em cada porta. Ativar HCR não cria, remove nem altera o marcador `multiprotocol-PORT.enabled`; quando o multiprotocolo está OFF, frames HCR são encaminhados ao servidor HCR oficial e o restante continua no protocolo da opção 1. Quando os dois estão ON, frames HCR válidos são tratados antes do dispatcher e os demais protocolos continuam no dispatcher. A detecção aguarda até 8 segundos por um cabeçalho HCR completo de 62 bytes, aceitando frames fragmentados em redes móveis. O serviço HCR oficial da porta 8880 precisa estar ativo. Nenhuma dessas opções abre ou fecha portas.
 
 **HCR nas portas 80/8080 (APK AZPro Lite).** Nas redes móveis, as portas 80/8080 passam por proxy transparente da operadora, que derruba tráfego binário cru, e conexões novas direto na 8880 podem ser descartadas no caminho (`failed to connect ... after 4000ms` no log do app, sem nenhum descarte registrado na VPS). Por isso, com HCR ON na porta (tecla H), o AWpro também aceita HCR encapsulado em HTTP: o cliente abre cada conexão com `GET /hcr HTTP/1.1` + `Upgrade: websocket` (ou cabeçalho `X-AzPro-HCR`), o AWpro responde `101 Switching Protocols` com `Sec-WebSocket-Accept` e repassa os frames HCR seguintes intactos ao `hcr-server` em `127.0.0.1:8880`. Pedidos HTTP sem essa marca continuam no fluxo normal da porta, e o HCR cru continua funcionando. O APK AZPro Lite precisa do patch em `apk-patch/` (classe `HcrHttpUpgrade`, chamada pelo `HcrSocketRelay` logo após o `connect`), que faz esse handshake em qualquer porta exceto a 8880. Cada alteração reinicia o serviço da porta e derruba as conexões existentes. As opções 01–06 permanecem separadas.
 
@@ -182,4 +182,4 @@ O estado multiprotocolo é individual por porta, no marcador `/opt/mpro/multipro
 
 ## Opção 08 — Desinstalar Proxy
 
-A opção **[08] DESINSTALAR PROXY** exige execução como root. O menu explica: digite `s` para desinstalar ou `n` para cancelar; somente `s` ou `S` confirma. Ela para e desabilita somente os serviços systemd cuja linha `ExecStart` aponta para os binários Azpro em `/opt/mpro`, remove os links instalados em `/usr/local/bin` quando ainda apontam para o Azpro e apaga os binários, menu, certificados TLS e marcadores BYPASS/legados conhecidos. Não remove OpenSSH, Rust, OpenSSL, regras de firewall nem arquivos desconhecidos que estejam em `/opt/mpro`; se sobrarem arquivos, o diretório é preservado.
+A opção **[08] DESINSTALAR PROXY** exige execução como root. O menu explica: digite `s` para desinstalar ou `n` para cancelar; somente `s` ou `S` confirma. Ela para e desabilita somente os serviços systemd cuja linha `ExecStart` aponta para os binários Epro em `/opt/mpro`, remove os links instalados em `/usr/local/bin` quando ainda apontam para o Epro e apaga os binários, menu, certificados TLS e marcadores BYPASS/legados conhecidos. Não remove OpenSSH, Rust, OpenSSL, regras de firewall nem arquivos desconhecidos que estejam em `/opt/mpro`; se sobrarem arquivos, o diretório é preservado.

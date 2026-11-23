@@ -1,5 +1,3 @@
-pub mod hcr_server;
-mod hcr;
 #[allow(dead_code)]
 mod protocol;
 mod relay;
@@ -36,7 +34,7 @@ async fn main() -> Result<(), Error> {
     let ssh_only = has_arg("-ssh");
     let quic_port = get_quic_port();
 
-    println!("[Azpro] Proxy TCP v2.6.0");
+    println!("[Epro] Proxy TCP v2.6.0");
     println!("[TCP] Porta: {}", port);
     if multiprotocol_enabled {
         println!(
@@ -63,13 +61,6 @@ async fn main() -> Result<(), Error> {
         // QUIC permanece desativado: o binário não possui um listener QUIC real.
     }
 
-    if hcr_enabled {
-        tokio::spawn(async move {
-            if let Err(e) = hcr_server::start("127.0.0.1:8881", "127.0.0.1:22").await {
-                eprintln!("[HCR] Erro no servidor nativo: {}", e);
-            }
-        });
-    }
     let listener = TcpListener::bind(format!("[::]:{}", port)).await?;
     println!("Aguardando conexoes TCP...");
     start_http(
@@ -127,30 +118,22 @@ async fn handle_client_protocol(
     multiprotocol_enabled: bool,
     hcr_enabled: bool,
 ) -> Result<(), Error> {
-    // A tecla H só adiciona o reconhecimento de frames HCR. Tráfego que não
-    // for HCR continua no modo escolhido para a porta, sem ligar o dispatcher.
-    // Com o multiprotocolo ligado, o dispatcher já detecta HCR. Fora dele,
-    // detecte apenas um frame HCR real; tráfego normal deve seguir direto
-    // para o handshake HTTP da opção 1.
-    // O APK corrigido também pode abrir a conexão com `GET /hcr` + Upgrade
-    // (necessário atrás do proxy transparente da operadora nas portas 80/8080).
+    // HCR e o fluxo normal da opção 1 podem coexistir sem ativar o dispatcher.
+    // O cliente HCR usado no aplicativo espera o HTTP 101 antes de enviar o
+    // primeiro frame. Envie esse handshake primeiro, detecte HCR sem consumir
+    // bytes e, se não for HCR, continue no fluxo original da opção 1.
     if hcr_enabled && !multiprotocol_enabled {
-        match protocol::detect_hcr(&client_stream).await? {
-            protocol::HcrMatch::Raw => {
-                println!("[HCR] Frame detectado; encaminhando ao backend local");
-                return tls::handle_hcr(client_stream)
-                    .await
-                    .map_err(|e| Error::new(ErrorKind::Other, format!("HCR: {e}")));
-            }
-            protocol::HcrMatch::HttpUpgrade {
-                header_len,
-                response,
-            } => {
-                println!("[HCR] Upgrade HTTP /hcr detectado; encaminhando ao backend local");
-                return handle_hcr_http_upgrade(client_stream, header_len, &response).await;
-            }
-            protocol::HcrMatch::None => {}
+        let mut client_stream = client_stream;
+        client_stream
+            .write_all(option_one_initial_response())
+            .await?;
+        if protocol::detect_hcr_only(&client_stream).await? {
+            println!("[HCR] Frame detectado após o handshake da opção 1; encaminhando ao servidor oficial");
+            return tls::handle_hcr(client_stream)
+                .await
+                .map_err(|e| Error::new(ErrorKind::Other, format!("HCR: {e}")));
         }
+        return handle_client_after_initial(client_stream, status, ssh_only).await;
     }
 
     if multiprotocol_enabled {
@@ -163,21 +146,6 @@ async fn handle_client_protocol(
     handle_client(client_stream, status, ssh_only).await
 }
 
-/// Consome o cabeçalho `GET /hcr` já inspecionado, responde `101` e repassa
-/// os frames HCR seguintes intactos para o backend local.
-async fn handle_hcr_http_upgrade(
-    mut client_stream: TcpStream,
-    header_len: usize,
-    response: &[u8],
-) -> Result<(), Error> {
-    let mut header = vec![0u8; header_len];
-    client_stream.read_exact(&mut header).await?;
-    client_stream.write_all(response).await?;
-    client_stream.flush().await?;
-    tls::handle_hcr(client_stream)
-        .await
-        .map_err(|e| Error::new(ErrorKind::Other, format!("HCR: {e}")))
-}
 async fn handle_multiprotocol_client(
     client_stream: TcpStream,
     status: &str,
@@ -260,13 +228,23 @@ async fn handle_client(
     ssh_only: bool,
 ) -> Result<(), Error> {
     // Opção 1: fluxo compatível com o WZPRO, sem o segundo 101 do
-    // multiprotocolo. O caminho HCR chega aqui somente quando está desligado.
+    // multiprotocolo.
     relay::tune_tcp_stream(&client_stream);
     client_stream.set_nodelay(true)?;
     client_stream
         .write_all(option_one_initial_response())
         .await?;
 
+    handle_client_after_initial(client_stream, status, ssh_only).await
+}
+
+async fn handle_client_after_initial(
+    mut client_stream: TcpStream,
+    status: &str,
+    ssh_only: bool,
+) -> Result<(), Error> {
+    // O handshake inicial já foi enviado pela opção 1 ou pelo caminho HCR
+    // combinado; não o envie novamente.
     let mut buffer = [0u8; 1024];
     let _ = client_stream.read(&mut buffer).await?;
     client_stream
@@ -403,10 +381,7 @@ async fn peek_stream(stream: &TcpStream) -> Result<String, Error> {
     Ok(String::from_utf8_lossy(&peek_buffer[..bytes_peeked]).to_string())
 }
 
-async fn relay_to_backend_legacy(
-    mut client_stream: TcpStream,
-    addr: &str,
-) -> Result<(), Error> {
+async fn relay_to_backend_legacy(mut client_stream: TcpStream, addr: &str) -> Result<(), Error> {
     let mut server_stream = timeout(Duration::from_secs(3), TcpStream::connect(addr))
         .await
         .map_err(|_| Error::new(ErrorKind::TimedOut, "timeout conectando backend"))??;
@@ -587,11 +562,14 @@ fn has_arg(arg: &str) -> bool {
 #[cfg(test)]
 mod tests {
     use super::{
-        bypass_enabled_in, find_http_header_end, hcr_enabled_in, http_handshake_followup,
-        http_status_response, multiprotocol_enabled_in, option_one_followup,
-        option_one_initial_response, strip_http_decoy_prefix,
+        bypass_enabled_in, find_http_header_end, handle_client_protocol, hcr_enabled_in,
+        http_handshake_followup, http_status_response, multiprotocol_enabled_in,
+        option_one_followup, option_one_initial_response, strip_http_decoy_prefix,
     };
     use std::path::Path;
+    use tokio::io::AsyncReadExt;
+    use tokio::net::{TcpListener, TcpStream};
+    use tokio::time::{timeout, Duration};
 
     #[test]
     fn per_port_markers_do_not_enable_other_ports_or_each_other() {
@@ -656,10 +634,28 @@ mod tests {
             option_one_initial_response(),
             b"HTTP/1.1 101 Switching Protocols\r\n\r\n"
         );
-        assert_eq!(
-            option_one_followup("Aznet"),
-            b"HTTP/1.1 200 Aznet\r\n\r\n"
-        );
+        assert_eq!(option_one_followup("Aznet"), b"HTTP/1.1 200 Aznet\r\n\r\n");
+    }
+    #[tokio::test]
+    async fn hcr_enabled_option_one_sends_101_before_client_payload() {
+        let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let address = listener.local_addr().unwrap();
+        let server = tokio::spawn(async move {
+            let (stream, _) = listener.accept().await.unwrap();
+            let _ = handle_client_protocol(stream, "@Azpro", true, false, false, true).await;
+        });
+
+        let mut client = TcpStream::connect(address).await.unwrap();
+        let mut response = [0u8; 64];
+        let bytes = timeout(Duration::from_millis(500), client.read(&mut response))
+            .await
+            .expect("a opção 1 deve responder antes do payload HCR")
+            .unwrap();
+        assert!(response[..bytes].starts_with(option_one_initial_response()));
+
+        drop(client);
+        server.abort();
+        let _ = server.await;
     }
 
     #[test]

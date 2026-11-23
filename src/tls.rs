@@ -9,7 +9,7 @@ use tokio::time::{sleep, timeout, Duration};
 const HCR_BACKEND_CONNECT_TIMEOUT: Duration = Duration::from_secs(3);
 const HCR_BACKEND_RETRY_DELAY: Duration = Duration::from_millis(500);
 const HCR_BACKEND_RETRIES: usize = 20;
-const HCR_BACKEND_ADDR: &str = "127.0.0.1:8881";
+const HCR_BACKEND_ADDR: &str = "127.0.0.1:8880";
 
 /// Handle TLS connections - passthrough to backend.
 pub async fn handle_tls(socket: TcpStream) -> Result<()> {
@@ -54,12 +54,12 @@ pub async fn handle_tls(socket: TcpStream) -> Result<()> {
     }
 }
 
-/// Encaminha o fluxo HCR intacto ao backend HCR local em transporte plain.
+/// Encaminha o fluxo HCR intacto ao servidor oficial HCR em transporte plain.
 pub async fn handle_hcr(mut socket: TcpStream) -> Result<()> {
-    crate::relay::tune_tcp_stream(&socket);
+    crate::relay::tune_hcr_stream(&socket);
     let mut hcr = connect_hcr_backend().await?;
-    crate::relay::tune_tcp_stream(&hcr);
-    info!("HCR multiprotocolo -> backend local {HCR_BACKEND_ADDR}");
+    crate::relay::tune_hcr_stream(&hcr);
+    info!("HCR multiprotocolo -> servidor oficial {HCR_BACKEND_ADDR}");
     crate::relay::copy_bidirectional(&mut socket, &mut hcr).await?;
     Ok(())
 }

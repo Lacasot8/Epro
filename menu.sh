@@ -1,7 +1,7 @@
 #!/bin/bash
 
 # ============================================
-# Azpro Menu - Free v5
+# Epro Menu - Free v5
 # ============================================
 
 LKPROXY="/opt/mpro/proxy"
@@ -14,18 +14,18 @@ LANGUAGE_FILE="${BYPASS_DIR}/language"
 HCR_PORT="8880"
 HCR_SERVICE="hcr-8880.service"
 HCR_SSH_TARGET="127.0.0.1:22"
-# O hcr-server 0.1.29 rejeita valores acima do timeout interno de I/O.
-# 20s reduz a espera de polling para evitar resets em operadoras móveis.
-HCR_DOWNLOAD_POLL_TIMEOUT="20s"
+# O hcr-server 0.1.29 aceita até 30s. O cliente HCR do APK usa keepalive
+# de 20s; manter 30s evita a corrida sem rejeitar a configuração da unit.
+HCR_DOWNLOAD_POLL_TIMEOUT="30s"
 # 16 KiB é o frame mais compatível com clientes HCR e redes móveis.
-HCR_DOWNLOAD_FRAME="65536"
+HCR_DOWNLOAD_FRAME="16384"
 HCR_MAX_CONNECTIONS="4096"
-HCR_MAX_SESSIONS="1024"
-HCR_MAX_SESSIONS_PER_IP="1024"
+HCR_MAX_SESSIONS="128"
+HCR_MAX_SESSIONS_PER_IP="64"
 HCR_BINARY_CANDIDATES=("${BYPASS_DIR}/hcr-server" "/opt/hcr-server/hcr-server" "/usr/local/bin/hcr-server" "/usr/bin/hcr-server")
-# Fonte pública do binário oficial hcr-server (Linux amd64). Pode ser trocada
-# exportando HCR_SOURCE_URL antes de abrir o menu.
-HCR_SOURCE_URL="${HCR_SOURCE_URL:-https://raw.githubusercontent.com/Lacasot8/Awpro/main/bin/hcr-server}"
+# O binário validado é mantido no próprio repositório Epro; HCR_SOURCE_URL
+# ainda pode substituir essa origem por um mirror HTTPS confiável.
+HCR_SOURCE_URL="${HCR_SOURCE_URL:-https://raw.githubusercontent.com/Lacasot8/Epro/main/bin/hcr-server}"
 
 # Cores
 RED='\033[0;31m'
@@ -82,7 +82,7 @@ language_text() {
         en:port443_hint) printf 'Port 443: use option [04] XHTTP + SSL Tunnel' ;;
         en:port_prompt) printf 'Port:' ;;
         en:https_prompt) printf 'Enable HTTPS/TLS? (y/n):' ;;
-        en:http_status_prompt) printf 'HTTP status (Default: @Azpro):' ;;
+        en:http_status_prompt) printf 'HTTP status (Default: @Epro):' ;;
         en:xhttp_title) printf 'xHTTP_SSH / SSL TUNNEL - Port 443' ;;
         en:status_name_prompt) printf 'HTTP status name:' ;;
         en:integrated_title) printf 'CURRENT CONFIGURATION' ;;
@@ -100,17 +100,17 @@ language_text() {
         en:close_title) printf 'Close open port' ;;
         en:choose_port_restart) printf 'Choose port to restart:' ;;
         en:choose_port_close) printf 'Choose port to close:' ;;
-        en:no_active) printf 'No active Azpro service.' ;;
+        en:no_active) printf 'No active Epro service.' ;;
         en:special_open) printf 'OPEN / CONFIGURE' ;;
         en:special_restart) printf 'RESTART PORT' ;;
         en:special_close) printf 'CLOSE PORT' ;;
         en:choose_action) printf 'Choose an option:' ;;
-        en:update_title) printf 'Update Azpro from GitHub' ;;
+        en:update_title) printf 'Update Epro from GitHub' ;;
         en:update_rebuild) printf 'The update recompiles the binaries.' ;;
         en:update_restart) printf 'Services may restart.' ;;
         en:update_reload) printf 'The menu will reload when finished.' ;;
         en:update_confirm) printf 'Continue with the update? (y/N):' ;;
-        en:uninstall_title) printf 'UNINSTALL Azpro' ;;
+        en:uninstall_title) printf 'UNINSTALL Epro' ;;
         en:uninstall_desc1) printf 'Stops services and removes proxy binaries.' ;;
         en:uninstall_desc2) printf 'Removes TLS certificates from /opt/mpro.' ;;
         en:uninstall_desc3) printf 'Preserves SSH, Rust, OpenSSL and other files.' ;;
@@ -137,7 +137,7 @@ language_text() {
         es:port443_hint) printf 'Puerto 443: use la opción [04] XHTTP + SSL Tunnel' ;;
         es:port_prompt) printf 'Puerto:' ;;
         es:https_prompt) printf '¿Activar HTTPS/TLS? (s/n):' ;;
-        es:http_status_prompt) printf 'Estado HTTP (Predeterminado: @Azpro):' ;;
+        es:http_status_prompt) printf 'Estado HTTP (Predeterminado: @Epro):' ;;
         es:xhttp_title) printf 'xHTTP_SSH / TÚNEL SSL - Puerto 443' ;;
         es:status_name_prompt) printf 'Nombre del estado HTTP:' ;;
         es:integrated_title) printf 'CONFIGURACIÓN ACTUAL' ;;
@@ -155,17 +155,17 @@ language_text() {
         es:close_title) printf 'Cerrar puerto abierto' ;;
         es:choose_port_restart) printf 'Elija el puerto para reiniciar:' ;;
         es:choose_port_close) printf 'Elija el puerto para cerrar:' ;;
-        es:no_active) printf 'Ningún servicio Azpro activo.' ;;
+        es:no_active) printf 'Ningún servicio Epro activo.' ;;
         es:special_open) printf 'ABRIR / CONFIGURAR' ;;
         es:special_restart) printf 'REINICIAR PUERTO' ;;
         es:special_close) printf 'CERRAR PUERTO' ;;
         es:choose_action) printf 'Seleccione una opción:' ;;
-        es:update_title) printf 'Actualizar Azpro desde GitHub' ;;
+        es:update_title) printf 'Actualizar Epro desde GitHub' ;;
         es:update_rebuild) printf 'La actualización recompila los binarios.' ;;
         es:update_restart) printf 'Los servicios pueden reiniciarse.' ;;
         es:update_reload) printf 'El menú se recargará al terminar.' ;;
         es:update_confirm) printf '¿Continuar con la actualización? (s/N):' ;;
-        es:uninstall_title) printf 'DESINSTALAR Azpro' ;;
+        es:uninstall_title) printf 'DESINSTALAR Epro' ;;
         es:uninstall_desc1) printf 'Detiene servicios y elimina binarios del proxy.' ;;
         es:uninstall_desc2) printf 'Elimina certificados TLS de /opt/mpro.' ;;
         es:uninstall_desc3) printf 'Conserva SSH, Rust, OpenSSL y otros archivos.' ;;
@@ -192,7 +192,7 @@ language_text() {
         pt-BR:port443_hint) printf 'Porta 443: use opção [04] XHTTP + SSL Tunnel' ;;
         pt-BR:port_prompt) printf 'Porta:' ;;
         pt-BR:https_prompt) printf 'Habilitar o HTTPS/TLS? (s/n):' ;;
-        pt-BR:http_status_prompt) printf 'Status HTTP (Padrão: @Azpro):' ;;
+        pt-BR:http_status_prompt) printf 'Status HTTP (Padrão: @Epro):' ;;
         pt-BR:xhttp_title) printf 'xHTTP_SSH / SSL TUNNEL - Porta 443' ;;
         pt-BR:status_name_prompt) printf 'Nome do status HTTP:' ;;
         pt-BR:integrated_title) printf 'CONFIGURAÇÕES ATUAIS' ;;
@@ -210,17 +210,17 @@ language_text() {
         pt-BR:close_title) printf 'Fechar porta aberta' ;;
         pt-BR:choose_port_restart) printf 'Escolha a porta para reiniciar:' ;;
         pt-BR:choose_port_close) printf 'Escolha a porta para fechar:' ;;
-        pt-BR:no_active) printf 'Nenhum serviço Azpro ativo.' ;;
+        pt-BR:no_active) printf 'Nenhum serviço Epro ativo.' ;;
         pt-BR:special_open) printf 'ABRIR / CONFIGURAR' ;;
         pt-BR:special_restart) printf 'REINICIAR PORTA' ;;
         pt-BR:special_close) printf 'FECHAR PORTA' ;;
         pt-BR:choose_action) printf 'Escolha uma opção:' ;;
-        pt-BR:update_title) printf 'Atualizar Azpro pelo GitHub' ;;
+        pt-BR:update_title) printf 'Atualizar Epro pelo GitHub' ;;
         pt-BR:update_rebuild) printf 'A atualização recompila os binários.' ;;
         pt-BR:update_restart) printf 'Os serviços podem reiniciar.' ;;
         pt-BR:update_reload) printf 'O menu será recarregado ao terminar.' ;;
         pt-BR:update_confirm) printf 'Continuar com a atualização? (s/N):' ;;
-        pt-BR:uninstall_title) printf 'DESINSTALAR Azpro' ;;
+        pt-BR:uninstall_title) printf 'DESINSTALAR Epro' ;;
         pt-BR:uninstall_desc1) printf 'Para serviços e remove binários do proxy.' ;;
         pt-BR:uninstall_desc2) printf 'Remove certificados TLS de /opt/mpro.' ;;
         pt-BR:uninstall_desc3) printf 'Preserva SSH, Rust, OpenSSL e demais arquivos.' ;;
@@ -441,7 +441,7 @@ open_port() {
         return
     fi
     read -r -p "$(language_text http_status_prompt "$LANGUAGE") " STATUS
-    [[ -z "$STATUS" ]] && STATUS="@Azpro"
+    [[ -z "$STATUS" ]] && STATUS="@Epro"
     read -p "Habilitar somente SSH? (s/n): " SSH_ONLY
     SSH_ONLY=${SSH_ONLY,,}
     [[ "$SSH_ONLY" == "y" ]] && SSH_ONLY="s"
@@ -481,6 +481,16 @@ hcr_binary_version() {
 
 hcr_install_binary() {
     local DEST="${BYPASS_DIR}/hcr-server" TMP="" MAGIC="" SOURCE="${HCR_SOURCE_URL}"
+    local PAYLOAD="" EXTRACT_DIR="" MEMBER=""
+    if [[ -z "$SOURCE" ]]; then
+        echo -e "${RED}Download automático indisponível: a origem antiga do hcr-server retorna 404.${NC}" >&2
+        echo "Configure HCR_SOURCE_URL com uma URL HTTPS oficial ou instale o binário manualmente em ${DEST}." >&2
+        return 1
+    fi
+    if [[ "$SOURCE" != https://* ]]; then
+        echo -e "${RED}Origem inválida: o download do hcr-server exige uma URL HTTPS.${NC}" >&2
+        return 1
+    fi
 
     if ! hcr_arch_ok; then
         echo -e "${RED}O hcr-server oficial só é publicado para Linux amd64. Arquitetura atual: $(uname -m).${NC}" >&2
@@ -507,28 +517,53 @@ hcr_install_binary() {
         return 1
     fi
 
-    # Valida ELF64 x86-64 (e_ident + e_machine = 0x3e) sem depender do pacote `file`.
+    # Aceita o ELF legado e o novo hcr-server-linux-amd64.tar.gz.
+    # Os nomes do tar são verificados antes da extração para impedir traversal.
     MAGIC=$(head -c 20 "$TMP" 2>/dev/null | od -An -tx1 | tr -d ' \n')
-    if [[ "$MAGIC" != 7f454c46* || "${MAGIC:36:4}" != "3e00" ]]; then
+    if [[ "$MAGIC" == 7f454c46* && "${MAGIC:36:4}" == "3e00" ]]; then
+        PAYLOAD="$TMP"
+    elif [[ "$MAGIC" == 1f8b* ]]; then
+        EXTRACT_DIR=$(mktemp -d /tmp/azpro-hcr-extract.XXXXXX) || {
+            rm -f -- "$TMP"
+            echo -e "${RED}Não foi possível criar diretório temporário para o HCR.${NC}" >&2
+            return 1
+        }
+        if tar -tzf "$TMP" | grep -Eq '(^/|(^|/)\.\./|(^|/)\.\.$)' || ! tar -xzf "$TMP" -C "$EXTRACT_DIR"; then
+            rm -rf -- "$EXTRACT_DIR" "$TMP"
+            echo -e "${RED}O pacote HCR é inválido ou contém caminhos inseguros.${NC}" >&2
+            return 1
+        fi
+        while IFS= read -r -d '' MEMBER; do
+            MAGIC=$(head -c 20 "$MEMBER" 2>/dev/null | od -An -tx1 | tr -d ' \n')
+            if [[ "$MAGIC" == 7f454c46* && "${MAGIC:36:4}" == "3e00" ]]; then
+                PAYLOAD="$MEMBER"
+                break
+            fi
+        done < <(find "$EXTRACT_DIR" -type f -name 'hcr-server*' -print0)
+        if [[ -z "$PAYLOAD" ]]; then
+            rm -rf -- "$EXTRACT_DIR" "$TMP"
+            echo -e "${RED}O pacote não contém um hcr-server ELF64 Linux amd64 válido.${NC}" >&2
+            return 1
+        fi
+    else
         rm -f -- "$TMP"
-        echo -e "${RED}O arquivo baixado não é um binário ELF Linux amd64 válido.${NC}" >&2
+        echo -e "${RED}O download não é um ELF amd64 nem um pacote tar.gz válido.${NC}" >&2
         return 1
     fi
-
-    if ! chmod 755 "$TMP"; then
-        rm -f -- "$TMP"
+    if ! chmod 755 "$PAYLOAD"; then
+        rm -rf -- "$EXTRACT_DIR" "$TMP"
         echo -e "${RED}Não foi possível preparar o binário baixado.${NC}" >&2
         return 1
     fi
     if [[ -f "$DEST" ]]; then
         cp -a -- "$DEST" "${DEST}.bak.$(date +%Y%m%d-%H%M%S)" 2>/dev/null || true
     fi
-    if ! install -m 755 "$TMP" "$DEST"; then
-        rm -f -- "$TMP"
+    if ! install -m 755 "$PAYLOAD" "$DEST"; then
+        rm -rf -- "$EXTRACT_DIR" "$TMP"
         echo -e "${RED}Falha ao instalar ${DEST}.${NC}" >&2
         return 1
     fi
-    rm -f -- "$TMP"
+    rm -rf -- "$EXTRACT_DIR" "$TMP"
     echo -e "${GREEN}hcr-server instalado em ${DEST}${NC}" >&2
     echo "Versão: $(hcr_binary_version "$DEST")" >&2
     return 0
@@ -544,6 +579,11 @@ hcr_ensure_binary() {
     echo -e "${YELLOW}Servidor HCR oficial não instalado.${NC}" >&2
     if ! hcr_arch_ok; then
         echo "O binário oficial só existe para Linux amd64; instale manualmente em ${BYPASS_DIR}/hcr-server." >&2
+        return 1
+    fi
+    if [[ -z "$HCR_SOURCE_URL" ]]; then
+        echo "A URL pública anterior foi removida (HTTP 404); o download automático está desativado." >&2
+        echo "Instale o binário oficial em ${BYPASS_DIR}/hcr-server ou execute o menu com HCR_SOURCE_URL=https://..." >&2
         return 1
     fi
     read -r -p "Baixar e instalar o hcr-server oficial agora? (s/n): " ANSWER
@@ -612,7 +652,7 @@ hcr_apply_download_frame_tuning() {
     [[ "$HAS_FRAME" == true || "$HAS_POLL" == true ]] || return 0
     grep -Eq '^[[:space:]]*ExecStart=.*hcr-server' "$SERVICE_FILE" || return 0
     if [[ "$HAS_FRAME" == true ]] && grep -Eq "^[[:space:]]*ExecStart=.*-max-download-frame[[:space:]]+${HCR_DOWNLOAD_FRAME}([[:space:]]|$)" "$SERVICE_FILE" &&
-        { [[ "$HAS_POLL" != true ]] || grep -Eq '^[[:space:]]*ExecStart=.*-download-poll-timeout[[:space:]]+20s([[:space:]]|$)' "$SERVICE_FILE"; }; then
+        { [[ "$HAS_POLL" != true ]] || grep -Eq "^[[:space:]]*ExecStart=.*-download-poll-timeout[[:space:]]+${HCR_DOWNLOAD_POLL_TIMEOUT}([[:space:]]|$)" "$SERVICE_FILE"; }; then
         return 0
     fi
 
@@ -624,12 +664,12 @@ hcr_apply_download_frame_tuning() {
         sed -i -E "/^[[:space:]]*ExecStart=.*hcr-server/ s/[[:space:]]*$/ -max-download-frame ${HCR_DOWNLOAD_FRAME}/" "$SERVICE_FILE"
     fi
     if [[ "$HAS_POLL" == true ]] && grep -Eq '^[[:space:]]*ExecStart=.*download-poll-timeout([=[:space:]]|$)' "$SERVICE_FILE"; then
-        sed -i -E '/^[[:space:]]*ExecStart=.*hcr-server/ { s/(-{1,2}download-poll-timeout)=([^[:space:]]+)/\1 20s/; s/(-{1,2}download-poll-timeout)[[:space:]]+[^[:space:]]+/\1 20s/; }' "$SERVICE_FILE"
+        sed -i -E "/^[[:space:]]*ExecStart=.*hcr-server/ { s/(-{1,2}download-poll-timeout)=([^[:space:]]+)/\\1 ${HCR_DOWNLOAD_POLL_TIMEOUT}/; s/(-{1,2}download-poll-timeout)[[:space:]]+[^[:space:]]+/\\1 ${HCR_DOWNLOAD_POLL_TIMEOUT}/; }" "$SERVICE_FILE"
     elif [[ "$HAS_POLL" == true ]]; then
-        sed -i -E '/^[[:space:]]*ExecStart=.*hcr-server/ s/[[:space:]]*$/ -download-poll-timeout 20s/' "$SERVICE_FILE"
+        sed -i -E "/^[[:space:]]*ExecStart=.*hcr-server/ s/[[:space:]]*$/ -download-poll-timeout ${HCR_DOWNLOAD_POLL_TIMEOUT}/" "$SERVICE_FILE"
     fi
     if { [[ "$HAS_FRAME" != true ]] || grep -Eq "^[[:space:]]*ExecStart=.*-max-download-frame[[:space:]]+${HCR_DOWNLOAD_FRAME}([[:space:]]|$)" "$SERVICE_FILE"; } &&
-        { [[ "$HAS_POLL" != true ]] || grep -Eq '^[[:space:]]*ExecStart=.*-download-poll-timeout[[:space:]]+20s([[:space:]]|$)' "$SERVICE_FILE"; } &&
+        { [[ "$HAS_POLL" != true ]] || grep -Eq "^[[:space:]]*ExecStart=.*-download-poll-timeout[[:space:]]+${HCR_DOWNLOAD_POLL_TIMEOUT}([[:space:]]|$)" "$SERVICE_FILE"; } &&
         systemctl daemon-reload >/dev/null 2>&1; then
         echo -e "${GREEN}Tuning HCR aplicado: polling em ${HCR_DOWNLOAD_POLL_TIMEOUT} e frame em $((HCR_DOWNLOAD_FRAME / 1024)) KiB; unit anterior salva em ${BACKUP}.${NC}"
         return 0
@@ -641,57 +681,58 @@ hcr_apply_download_frame_tuning() {
 }
 
 hcr_apply_capacity_tuning() {
-    local BINARY="$1" SERVICE_FILE="$2" HELP="" BACKUP="" FLAG="" VALUE="" CHANGED=false
-    local -a FLAGS=() VALUES=()
-    local I
+    local BINARY="$1" SERVICE_FILE="$2" HELP="" BACKUP="" HAS_CAPACITY=false
+
     [[ -x "$BINARY" && -f "$SERVICE_FILE" ]] || return 0
     HELP=$(timeout 5 "$BINARY" -h 2>&1 </dev/null) || true
-    grep -q -- "-max-connections" <<<"$HELP" && { FLAGS+=("max-connections"); VALUES+=("$HCR_MAX_CONNECTIONS"); }
-    grep -q -- "-max-sessions int" <<<"$HELP" && { FLAGS+=("max-sessions"); VALUES+=("$HCR_MAX_SESSIONS"); }
-    grep -q -- "-max-sessions-per-ip" <<<"$HELP" && { FLAGS+=("max-sessions-per-ip"); VALUES+=("$HCR_MAX_SESSIONS_PER_IP"); }
-    (( ${#FLAGS[@]} > 0 )) || return 0
+    grep -q -- "-max-connections" <<<"$HELP" && HAS_CAPACITY=true
+    grep -q -- "-max-sessions int" <<<"$HELP" && HAS_CAPACITY=true
+    grep -q -- "-max-sessions-per-ip" <<<"$HELP" && HAS_CAPACITY=true
+    [[ "$HAS_CAPACITY" == true ]] || return 0
     grep -Eq '^[[:space:]]*ExecStart=.*hcr-server' "$SERVICE_FILE" || return 0
-    for I in "${!FLAGS[@]}"; do
-        grep -Eq "^[[:space:]]*ExecStart=.*-${FLAGS[$I]}[[:space:]]+${VALUES[$I]}([[:space:]]|$)" "$SERVICE_FILE" || CHANGED=true
-    done
-    [[ "$CHANGED" == true ]] || return 0
+
+    if grep -q -- "-max-connections" <<<"$HELP" && ! grep -Eq '^[[:space:]]*ExecStart=.*-max-connections[[:space:]]+4096([[:space:]]|$)' "$SERVICE_FILE"; then
+        :
+    elif grep -q -- "-max-sessions int" <<<"$HELP" && ! grep -Eq '^[[:space:]]*ExecStart=.*-max-sessions[[:space:]]+128([[:space:]]|$)' "$SERVICE_FILE"; then
+        :
+    elif grep -q -- "-max-sessions-per-ip" <<<"$HELP" && ! grep -Eq '^[[:space:]]*ExecStart=.*-max-sessions-per-ip[[:space:]]+64([[:space:]]|$)' "$SERVICE_FILE"; then
+        :
+    else
+        return 0
+    fi
+
     BACKUP="${SERVICE_FILE}.bak.$(date +%Y%m%d-%H%M%S)"
     cp -a -- "$SERVICE_FILE" "$BACKUP" || return 1
-    for I in "${!FLAGS[@]}"; do
-        FLAG="${FLAGS[$I]}" VALUE="${VALUES[$I]}"
-        # "-max-sessions" não pode casar com "-max-sessions-per-ip".
-        if grep -Eq "^[[:space:]]*ExecStart=.*-${FLAG}([=[:space:]]|$)" "$SERVICE_FILE"; then
-            sed -i -E "/^[[:space:]]*ExecStart=.*hcr-server/ { s/(-{1,2}${FLAG})=([0-9]+)/\\1 ${VALUE}/; s/(-{1,2}${FLAG})[[:space:]]+[0-9]+/\\1 ${VALUE}/; }" "$SERVICE_FILE"
+    if grep -q -- "-max-connections" <<<"$HELP"; then
+        if grep -Eq '^[[:space:]]*ExecStart=.*-max-connections([=[:space:]]|$)' "$SERVICE_FILE"; then
+            sed -i -E '/^[[:space:]]*ExecStart=.*hcr-server/ { s/(-{1,2}max-connections)=([0-9]+)/\1 4096/; s/(-{1,2}max-connections)[[:space:]]+[0-9]+/\1 4096/; }' "$SERVICE_FILE"
         else
-            sed -i -E "/^[[:space:]]*ExecStart=.*hcr-server/ s/[[:space:]]*$/ -${FLAG} ${VALUE}/" "$SERVICE_FILE"
+            sed -i -E '/^[[:space:]]*ExecStart=.*hcr-server/ s/[[:space:]]*$/ -max-connections 4096/' "$SERVICE_FILE"
         fi
-    done
+    fi
+    if grep -q -- "-max-sessions int" <<<"$HELP"; then
+        if grep -Eq '^[[:space:]]*ExecStart=.*-max-sessions([=[:space:]]|$)' "$SERVICE_FILE"; then
+            sed -i -E '/^[[:space:]]*ExecStart=.*hcr-server/ { s/(-{1,2}max-sessions)=([0-9]+)/\1 128/; s/(-{1,2}max-sessions)[[:space:]]+[0-9]+/\1 128/; }' "$SERVICE_FILE"
+        else
+            sed -i -E '/^[[:space:]]*ExecStart=.*hcr-server/ s/[[:space:]]*$/ -max-sessions 128/' "$SERVICE_FILE"
+        fi
+    fi
+    if grep -q -- "-max-sessions-per-ip" <<<"$HELP"; then
+        if grep -Eq '^[[:space:]]*ExecStart=.*-max-sessions-per-ip([=[:space:]]|$)' "$SERVICE_FILE"; then
+            sed -i -E '/^[[:space:]]*ExecStart=.*hcr-server/ { s/(-{1,2}max-sessions-per-ip)=([0-9]+)/\1 64/; s/(-{1,2}max-sessions-per-ip)[[:space:]]+[0-9]+/\1 64/; }' "$SERVICE_FILE"
+        else
+            sed -i -E '/^[[:space:]]*ExecStart=.*hcr-server/ s/[[:space:]]*$/ -max-sessions-per-ip 64/' "$SERVICE_FILE"
+        fi
+    fi
     if systemctl daemon-reload >/dev/null 2>&1; then
-        echo -e "${GREEN}Limites HCR ajustados: ${HCR_MAX_CONNECTIONS} conexões, ${HCR_MAX_SESSIONS} sessões e ${HCR_MAX_SESSIONS_PER_IP} sessões por origem.${NC}"
+        echo -e "${GREEN}Limites HCR ajustados: 4096 conexões, 128 sessões e 64 sessões por origem.${NC}"
         return 0
     fi
     cp -a -- "$BACKUP" "$SERVICE_FILE"
     systemctl daemon-reload >/dev/null 2>&1 || true
     return 1
 }
-# Após atualizar pelo GitHub, reaplica frame/limites na unit HCR existente e
-# reinicia o HCR uma única vez se algo mudou. Sem isso, a unit antiga (64
-# sessões por origem) continuaria valendo e, pela opção H, todos os clientes
-# chegam ao HCR como 127.0.0.1.
-hcr_reconcile_runtime_tuning() {
-    local SERVICE_FILE="${SYSTEMD_DIR}/${HCR_SERVICE}" BINARY="" BEFORE="" AFTER=""
-    [[ "$EUID" -eq 0 && -f "$SERVICE_FILE" ]] || return 0
-    command -v systemctl >/dev/null 2>&1 || return 0
-    BINARY=$(sed -n -E 's/^[[:space:]]*ExecStart=([^[:space:]]+).*/\1/p' "$SERVICE_FILE" | head -n 1)
-    [[ -x "$BINARY" ]] || return 0
-    BEFORE=$(sha256sum "$SERVICE_FILE" 2>/dev/null)
-    hcr_apply_download_frame_tuning "$BINARY" "$SERVICE_FILE" >/dev/null 2>&1 || true
-    hcr_apply_capacity_tuning "$BINARY" "$SERVICE_FILE" >/dev/null 2>&1 || true
-    AFTER=$(sha256sum "$SERVICE_FILE" 2>/dev/null)
-    if [[ "$BEFORE" != "$AFTER" ]] && systemctl is-active --quiet "$HCR_SERVICE" 2>/dev/null; then
-        systemctl restart "$HCR_SERVICE" >/dev/null 2>&1 || true
-    fi
-}
+
 hcr_port_busy() {
     ss -lntH 2>/dev/null | awk '{print $4}' | grep -Eq "[:.]$1$"
 }
@@ -859,8 +900,13 @@ hcr_manage_binary() {
     echo ""
     if [[ -n "$BINARY" ]]; then
         echo "Versão: $(hcr_binary_version "$BINARY")"
-        echo "Fonte: ${HCR_SOURCE_URL}"
+        [[ -n "$HCR_SOURCE_URL" ]] && echo "Fonte de atualização: ${HCR_SOURCE_URL}"
         echo ""
+    elif [[ -z "$HCR_SOURCE_URL" ]]; then
+        echo "A origem antiga do binário retorna 404 e não há uma fonte HTTPS configurada."
+        echo "Instale o binário oficial em ${BYPASS_DIR}/hcr-server ou configure HCR_SOURCE_URL."
+        read -r -p "Enter para continuar..." _
+        return 1
     fi
     read -r -p "Baixar/atualizar o hcr-server oficial agora? (s/n): " ANSWER
     if ! is_yes "$ANSWER"; then
@@ -1050,7 +1096,7 @@ open_xhttp() {
     box_bottom
     echo ""
     read -r -p "$(language_text status_name_prompt "$LANGUAGE") " STATUS
-    [[ -z "$STATUS" ]] && STATUS="@Azpro"
+    [[ -z "$STATUS" ]] && STATUS="@Epro"
     read -p "Porta SSH backend (Padrão: 22): " SSH_PORT
     [[ -z "$SSH_PORT" ]] && SSH_PORT="22"
     mkdir -p /opt/mpro
@@ -1109,7 +1155,7 @@ open_integrated() {
         QUIC_ARG="--quic --quic-port $QPORT"
     fi
     read -r -p "$(language_text status_http_prompt "$LANGUAGE") " STATUS
-    [[ -z "$STATUS" ]] && STATUS="@Azpro"
+    [[ -z "$STATUS" ]] && STATUS="@Epro"
     mkdir -p /opt/mpro
     if [ ! -f "/opt/mpro/cert.pem" ]; then
         openssl req -x509 -newkey rsa:2048 -keyout /opt/mpro/key.pem -out /opt/mpro/cert.pem -days 365 -nodes -subj "/CN=mpro" 2>/dev/null
@@ -1312,7 +1358,7 @@ manage_hcr_support() {
         box_line "${WHITE}${BOLD}SUPORTE HCR INDEPENDENTE POR PORTA${NC}"
         box_mid
         if ((${#ACTIVE_PORTS[@]} == 0)); then
-            box_line "${YELLOW}Nenhuma porta Azpro ativa.${NC}"
+            box_line "${YELLOW}Nenhuma porta Epro ativa.${NC}"
         else
             for ((INDEX=0; INDEX<${#ACTIVE_PORTS[@]}; INDEX++)); do
                 PORT=${ACTIVE_PORTS[$INDEX]}
@@ -1699,7 +1745,7 @@ update_from_github() {
         return
     }
     if ! run_update_step "Baixando instalador do GitHub" curl -fsSL --connect-timeout 15 --max-time 60 \
-        "https://raw.githubusercontent.com/Lacasot8/Awpro/main/install.sh" \
+        "https://raw.githubusercontent.com/Lacasot8/Epro/main/install.sh" \
         -o "$UPDATE_SCRIPT"; then
         rm -f "$UPDATE_SCRIPT"
         echo -e "${RED}Falha ao baixar o instalador. Nada foi atualizado.${NC}"
@@ -1707,7 +1753,7 @@ update_from_github() {
         return
     fi
 
-    if ! run_update_step "Validando fonte do instalador" grep -q 'REPO_URL="https://github.com/Lacasot8/Awpro.git"' "$UPDATE_SCRIPT"; then
+    if ! run_update_step "Validando fonte do instalador" grep -q 'REPO_URL="https://github.com/Lacasot8/Epro.git"' "$UPDATE_SCRIPT"; then
         rm -f "$UPDATE_SCRIPT"
         echo -e "${RED}O arquivo baixado não passou na validação do repositório.${NC}"
         read -r -p "Enter para continuar..." _
@@ -1755,7 +1801,7 @@ uninstall_proxy() {
     echo ""
 
     if [[ "$EUID" -ne 0 ]]; then
-        echo -e "${RED}Execute azpro como root para desinstalar.${NC}"
+        echo -e "${RED}Execute epro como root para desinstalar.${NC}"
         read -r -p "Enter para voltar..." _
         return 1
     fi
@@ -1831,6 +1877,7 @@ uninstall_proxy() {
         fi
     done
 
+    remove_owned_link "/usr/local/bin/epro" "/opt/mpro/menu"
     remove_owned_link "/usr/local/bin/azpro" "/opt/mpro/menu"
     remove_owned_link "/usr/local/bin/wzpro" "/opt/mpro/menu"
     remove_owned_link "/usr/local/bin/wspro" "/opt/mpro/menu"
@@ -1851,7 +1898,7 @@ uninstall_proxy() {
     rmdir /var/cache/azpro /var/cache/wzpro 2>/dev/null || true
     rmdir /opt/mpro 2>/dev/null || true
 
-    echo -e "${GREEN}Azpro desinstalado. SSH e dependências do sistema foram preservados.${NC}"
+    echo -e "${GREEN}Epro desinstalado. SSH e dependências do sistema foram preservados.${NC}"
     echo -e "${YELLOW}Arquivos não reconhecidos em /opt/mpro, se houver, foram preservados.${NC}"
     sleep 3
     exit 0
@@ -2022,7 +2069,7 @@ show_menu() {
     echo ""
 
     panel_top_color "$RED"
-    panel_line_color "$RED" "${RED}08  Lixeira  Desinstalar Azpro${NC}"
+    panel_line_color "$RED" "${RED}08  Lixeira  Desinstalar Epro${NC}"
     panel_line_color "$RED" "${WHITE}00  Sair do painel${NC}"
     panel_bottom_color "$RED"
     echo ""
@@ -2033,7 +2080,6 @@ migrate_legacy_multiprotocol_state
 
  # Reaplica drop-ins HCR de portas já habilitadas após atualização ou reboot.
 hcr_reconcile_proxy_dependencies
-hcr_reconcile_runtime_tuning
 
 while true; do
     show_menu

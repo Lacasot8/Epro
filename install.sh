@@ -1,9 +1,9 @@
 #!/bin/bash
-# Azpro Installer - Version v3
+# Epro Installer - Version v3
 
 REPO_URL="https://github.com/Lacasot8/Epro.git"
 REPO_BRANCH="main"
-CMD_NAME="azpro"
+CMD_NAME="epro"
 TOTAL_STEPS=7
 
 CURRENT_STEP=0
@@ -63,7 +63,7 @@ if [ "$EUID" -ne 0 ]; then
     log_error "Este script precisa ser executado como ROOT."
 fi
 
-# Memoriza somente serviços Azpro ativos para restaurá-los depois da troca dos binários.
+# Memoriza somente serviços Epro ativos para restaurá-los depois da troca dos binários.
 for SERVICE_FILE in /etc/systemd/system/proxy-*.service; do
     [ -f "$SERVICE_FILE" ] || continue
     if grep -Eq '^[[:space:]]*ExecStart=.*/opt/mpro/(proxy|proxy-xhttp|proxy-integrated)([[:space:]]|$)' "$SERVICE_FILE"; then
@@ -75,9 +75,9 @@ for SERVICE_FILE in /etc/systemd/system/proxy-*.service; do
 done
 
 clear
-echo -e "${CYAN}${BOLD}    A Z P R O  V E R S I O N  F R E E${NC}"
+echo -e "${CYAN}${BOLD}    E P R O  V E R S I O N  F R E E${NC}"
 echo -e "${BLUE}${BOLD}----------------------------------------${NC}"
-log_info "Iniciando instalação do Azpro v3.1.0 (🦥).."
+log_info "Iniciando instalação do Epro v3.1.0..."
 
 # --- Etapa 1 ---
 show_progress "Verificando dependências..."
@@ -121,7 +121,7 @@ fi
 show_progress "Instalando binários..."
 mkdir -p /opt/mpro
 
-# Para somente os serviços Azpro que estavam ativos; o menu azpro continua
+# Para somente os serviços Epro que estavam ativos; o menu epro continua
 # executando durante a atualização.
 SERVICES_STOPPED=1
 for SERVICE in "${ACTIVE_AZPRO_SERVICES[@]}"; do
@@ -173,7 +173,7 @@ if [ -f "menu.sh" ]; then
         log_error "Já existe outro comando em ${MENU_COMMAND}; ele não foi sobrescrito."
     fi
     ln -sfn /opt/mpro/menu "$MENU_COMMAND"
-    for LEGACY_COMMAND in /usr/local/bin/wzpro /usr/local/bin/wspro /usr/local/bin/mpro; do
+    for LEGACY_COMMAND in /usr/local/bin/azpro /usr/local/bin/wzpro /usr/local/bin/wspro /usr/local/bin/mpro; do
         if [ -L "$LEGACY_COMMAND" ] && [ "$(readlink -- "$LEGACY_COMMAND")" = "/opt/mpro/menu" ]; then
             rm -f -- "$LEGACY_COMMAND"
         fi
