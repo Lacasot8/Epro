@@ -123,17 +123,19 @@ async fn handle_client_protocol(
     // primeiro frame. Envie esse handshake primeiro, detecte HCR sem consumir
     // bytes e, se não for HCR, continue no fluxo original da opção 1.
     if hcr_enabled && !multiprotocol_enabled {
-        let mut client_stream = client_stream;
-        client_stream
-            .write_all(option_one_initial_response())
-            .await?;
-        if protocol::detect_hcr_only(&client_stream).await? {
-            println!("[HCR] Frame detectado após o handshake da opção 1; encaminhando ao servidor oficial");
-            return tls::handle_hcr(client_stream)
-                .await
-                .map_err(|e| Error::new(ErrorKind::Other, format!("HCR: {e}")));
+        match protocol::detect_hcr(&client_stream).await? {
+            protocol::HcrMatch::Raw => {
+                println!("[HCR] Frame detectado; encaminhando ao servidor oficial");
+                return tls::handle_hcr(client_stream)
+                    .await
+                    .map_err(|e| Error::new(ErrorKind::Other, format!("HCR: {e}")));
+            }
+            protocol::HcrMatch::HttpUpgrade { header_len, response } => {
+                println!("[HCR] Upgrade HTTP /hcr detectado; encaminhando ao servidor oficial");
+                return handle_hcr_http_upgrade(client_stream, header_len, &response).await;
+            }
+            protocol::HcrMatch::None => {}
         }
-        return handle_client_after_initial(client_stream, status, ssh_only).await;
     }
 
     if multiprotocol_enabled {
@@ -144,6 +146,21 @@ async fn handle_client_protocol(
         return handle_bypass_http_client(client_stream, status).await;
     }
     handle_client(client_stream, status, ssh_only).await
+}
+
+/// Consome o handshake HTTP marcado, responde 101 e preserva os frames HCR seguintes.
+async fn handle_hcr_http_upgrade(
+    mut client_stream: TcpStream,
+    header_len: usize,
+    response: &[u8],
+) -> Result<(), Error> {
+    let mut header = vec![0u8; header_len];
+    client_stream.read_exact(&mut header).await?;
+    client_stream.write_all(response).await?;
+    client_stream.flush().await?;
+    tls::handle_hcr(client_stream)
+        .await
+        .map_err(|e| Error::new(ErrorKind::Other, format!("HCR: {e}")))
 }
 
 async fn handle_multiprotocol_client(

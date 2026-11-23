@@ -1,4 +1,5 @@
 use base64::{engine::general_purpose::STANDARD, Engine as _};
+use sha1::{Digest, Sha1};
 use std::io;
 use tokio::net::TcpStream;
 use tokio::time::{sleep, timeout, Duration};
@@ -146,24 +147,28 @@ pub async fn detect_from_stream(stream: &TcpStream) -> io::Result<Protocol> {
     }
 }
 
-/// Detecta HCR sem bloquear o handshake HTTP da opção 1. O HTTP Injector
-/// espera o primeiro `101` do servidor antes de enviar o payload; por isso há
-/// uma janela curta para o primeiro byte HCR. Se nenhum byte chegar nessa
-/// janela, a conexão segue imediatamente para o protocolo normal da porta.
-/// Depois de reconhecer um prefixo HCR válido, aguardamos o cabeçalho completo
-/// para aceitar fragmentação em redes móveis.
-pub async fn detect_hcr_only(stream: &TcpStream) -> io::Result<bool> {
+/// Resultado da detecção HCR da opção H.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum HcrMatch {
+    None,
+    Raw,
+    HttpUpgrade { header_len: usize, response: Vec<u8> },
+}
+
+/// Detecta HCR cru ou o handshake HTTP Upgrade marcado, sem consumir bytes.
+pub async fn detect_hcr(stream: &TcpStream) -> io::Result<HcrMatch> {
     let mut buffer = [0u8; HCR_HEADER_SIZE];
     let first_byte = match timeout(HCR_FIRST_BYTE_TIMEOUT, stream.peek(&mut buffer[..1])).await {
         Ok(Ok(bytes)) if bytes > 0 => buffer[0],
-        Ok(Ok(_)) | Ok(Err(_)) | Err(_) => return Ok(false),
+        Ok(Ok(_)) | Ok(Err(_)) | Err(_) => return Ok(HcrMatch::None),
     };
+    if first_byte.is_ascii_alphabetic() {
+        return detect_hcr_http_upgrade(stream).await;
+    }
     if !(1..=6).contains(&first_byte) {
-        return Ok(false);
+        return Ok(HcrMatch::None);
     }
 
-    // Só os opcodes HCR entram na espera fragmentada. HTTP, TLS e SSH não
-    // passam por este caminho e preservam o tempo de resposta da opção 1.
     let result = timeout(Duration::from_secs(8), async {
         loop {
             let bytes_peeked = stream.peek(&mut buffer).await?;
@@ -176,12 +181,88 @@ pub async fn detect_hcr_only(stream: &TcpStream) -> io::Result<bool> {
                 None => sleep(Duration::from_millis(10)).await,
             }
         }
-    })
-    .await;
+    }).await;
     match result {
-        Ok(detected) => detected,
-        Err(_) => Ok(false),
+        Ok(Ok(true)) => Ok(HcrMatch::Raw),
+        Ok(Ok(false)) | Err(_) => Ok(HcrMatch::None),
+        Ok(Err(error)) => Err(error),
     }
+}
+
+pub async fn detect_hcr_only(stream: &TcpStream) -> io::Result<bool> {
+    Ok(matches!(detect_hcr(stream).await?, HcrMatch::Raw))
+}
+
+const HCR_HTTP_MAX_HEADER: usize = 8 * 1024;
+const HCR_HTTP_HEADER_TIMEOUT: Duration = Duration::from_secs(3);
+const WEBSOCKET_GUID: &str = "258EAFA5-E914-47DA-95CA-C5AB0DC85B11";
+
+async fn detect_hcr_http_upgrade(stream: &TcpStream) -> io::Result<HcrMatch> {
+    let mut buffer = vec![0u8; HCR_HTTP_MAX_HEADER];
+    let result = timeout(HCR_HTTP_HEADER_TIMEOUT, async {
+        loop {
+            let peeked = stream.peek(&mut buffer).await?;
+            if peeked == 0 {
+                return Ok(HcrMatch::None);
+            }
+            let data = &buffer[..peeked];
+            if !is_http_method_prefix(data) {
+                return Ok(HcrMatch::None);
+            }
+            if let Some(end) = find_header_end(data) {
+                return Ok(classify_hcr_http_request(&data[..end]));
+            }
+            if peeked >= HCR_HTTP_MAX_HEADER {
+                return Ok(HcrMatch::None);
+            }
+            sleep(Duration::from_millis(10)).await;
+        }
+    }).await;
+    match result {
+        Ok(value) => value,
+        Err(_) => Ok(HcrMatch::None),
+    }
+}
+
+fn find_header_end(data: &[u8]) -> Option<usize> {
+    data.windows(4).position(|window| window == b"\r\n\r\n").map(|position| position + 4)
+}
+
+fn classify_hcr_http_request(header: &[u8]) -> HcrMatch {
+    let Ok(text) = std::str::from_utf8(header) else { return HcrMatch::None; };
+    let mut lines = text.split("\r\n");
+    let request_line = lines.next().unwrap_or_default();
+    let mut parts = request_line.split(' ');
+    let _method = parts.next();
+    let target = parts.next().unwrap_or_default();
+    let path = target.split_once("://")
+        .map(|(_, rest)| rest.find('/').map_or("/", |index| &rest[index..]))
+        .unwrap_or(target);
+    let path_marker = path.len() >= 4
+        && path[..4].eq_ignore_ascii_case("/hcr")
+        && matches!(path.as_bytes().get(4), None | Some(b'/') | Some(b'?'));
+    let mut header_marker = false;
+    let mut websocket_key = None;
+    for line in lines {
+        let Some((name, value)) = line.split_once(':') else { continue; };
+        if name.trim().eq_ignore_ascii_case("X-AzPro-HCR") {
+            header_marker = true;
+        } else if name.trim().eq_ignore_ascii_case("Sec-WebSocket-Key") {
+            websocket_key = Some(value.trim().to_string());
+        }
+    }
+    if !path_marker && !header_marker { return HcrMatch::None; }
+    let mut response = String::from(
+        "HTTP/1.1 101 Switching Protocols\r\nUpgrade: websocket\r\nConnection: Upgrade\r\n",
+    );
+    if let Some(key) = websocket_key.filter(|key| !key.is_empty()) {
+        let mut hasher = Sha1::new();
+        hasher.update(key.as_bytes());
+        hasher.update(WEBSOCKET_GUID.as_bytes());
+        response.push_str(&format!("Sec-WebSocket-Accept: {}\r\n", STANDARD.encode(hasher.finalize())));
+    }
+    response.push_str("\r\n");
+    HcrMatch::HttpUpgrade { header_len: header.len(), response: response.into_bytes() }
 }
 
 fn is_http_method_prefix(data: &[u8]) -> bool {
@@ -385,6 +466,32 @@ mod tests {
         assert_eq!(detect_protocol(&hcr), Some(Protocol::Hcr));
         hcr[58..62].copy_from_slice(&(HCR_MAX_PAYLOAD + 1).to_be_bytes());
         assert_eq!(detect_protocol(&hcr), None);
+    }
+
+    #[tokio::test]
+    async fn detects_marked_hcr_http_upgrade_without_consuming_request() {
+        use tokio::io::{AsyncReadExt, AsyncWriteExt};
+        use tokio::net::{TcpListener, TcpStream};
+        let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let address = listener.local_addr().unwrap();
+        let request = b"GET /hcr HTTP/1.1\r\nHost: vps\r\nUpgrade: websocket\r\nConnection: Upgrade\r\nSec-WebSocket-Key: dGhlIHNhbXBsZSBub25jZQ==\r\n\r\n".to_vec();
+        let expected = request.clone();
+        let client = tokio::spawn(async move {
+            let mut stream = TcpStream::connect(address).await.unwrap();
+            stream.write_all(&request).await.unwrap();
+        });
+        let (server, _) = listener.accept().await.unwrap();
+        match detect_hcr(&server).await.unwrap() {
+            HcrMatch::HttpUpgrade { header_len, response } => {
+                assert_eq!(header_len, expected.len());
+                assert!(String::from_utf8(response).unwrap().contains("Sec-WebSocket-Accept: s3pPLMBiTxaQ9kYGzzhZRbK+xOo="));
+            }
+            other => panic!("esperava upgrade HCR, obtido {other:?}"),
+        }
+        let mut peeked = vec![0u8; expected.len()];
+        let bytes = server.peek(&mut peeked).await.unwrap();
+        assert_eq!(&peeked[..bytes], expected.as_slice());
+        client.await.unwrap();
     }
 
     #[test]
