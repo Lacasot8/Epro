@@ -14,9 +14,9 @@ LANGUAGE_FILE="${BYPASS_DIR}/language"
 HCR_PORT="8880"
 HCR_SERVICE="hcr-8880.service"
 HCR_SSH_TARGET="127.0.0.1:22"
-# O cliente HCR mantém sessões de download ociosas enquanto aguarda novos
-# polls. O padrão curto do servidor derruba a sessão em redes móveis lentas.
-HCR_DOWNLOAD_POLL_TIMEOUT="120s"
+# O hcr-server 0.1.29 aceita até 30s para o polling de download. O cliente
+# usa keepalive próprio; manter esse valor evita que a unit rejeite o início.
+HCR_DOWNLOAD_POLL_TIMEOUT="30s"
 # 16 KiB é o frame mais compatível com clientes HCR e redes móveis.
 HCR_DOWNLOAD_FRAME="16384"
 HCR_MAX_CONNECTIONS="4096"
@@ -938,7 +938,7 @@ hcr_manage_binary() {
 
 hcr_open_port() {
     local PORT="${HCR_PORT}" SERVICE="${HCR_SERVICE}" SERVICE_FILE="${SYSTEMD_DIR}/${HCR_SERVICE}"
-    local BINARY="" ARGS="" ALT_ARGS="" ANSWER="" ATTEMPT=""
+    local BINARY="" ARGS="" ALT_ARGS="" ANSWER="" ATTEMPT="" ROLLBACK_FILE=""
 
     clear
     show_banner
@@ -980,6 +980,17 @@ hcr_open_port() {
     echo "Binário: ${BINARY}"
 
     if systemctl is-active --quiet "$SERVICE" 2>/dev/null; then
+        ROLLBACK_FILE=$(mktemp "${SERVICE_FILE}.rollback.XXXXXX") || {
+            echo -e "${RED}Não foi possível salvar a unit HCR antes do tuning.${NC}"
+            read -r -p "Enter para continuar..." _
+            return 1
+        }
+        cp -a -- "$SERVICE_FILE" "$ROLLBACK_FILE" || {
+            rm -f -- "$ROLLBACK_FILE"
+            echo -e "${RED}Não foi possível salvar a unit HCR antes do tuning.${NC}"
+            read -r -p "Enter para continuar..." _
+            return 1
+        }
         if ! hcr_apply_download_frame_tuning "$BINARY" "$SERVICE_FILE"; then
             echo -e "${YELLOW}Não foi possível ajustar o tamanho dos blocos de download HCR; mantendo a configuração atual.${NC}"
         fi
@@ -988,9 +999,17 @@ hcr_open_port() {
         fi
         echo -e "${YELLOW}Aplicando configuração persistente do HCR e reiniciando uma vez...${NC}"
         if systemctl restart "$SERVICE" >/dev/null 2>&1 && hcr_wait_listening "$PORT"; then
+            rm -f -- "$ROLLBACK_FILE"
             echo -e "${GREEN}HCR ativo com configuração persistente na porta ${PORT}.${NC}"
         else
-            echo -e "${RED}O HCR não voltou a escutar a porta ${PORT}.${NC}"
+            echo -e "${RED}O HCR não voltou a escutar a porta ${PORT}; restaurando a unit anterior.${NC}"
+            if [[ -s "$ROLLBACK_FILE" ]]; then
+                cp -a -- "$ROLLBACK_FILE" "$SERVICE_FILE"
+                systemctl daemon-reload >/dev/null 2>&1 || true
+                systemctl restart "$SERVICE" >/dev/null 2>&1 || true
+                hcr_wait_listening "$PORT" 10 || true
+            fi
+            rm -f -- "$ROLLBACK_FILE"
         fi
         read -r -p "Enter para continuar..." _
         return 0

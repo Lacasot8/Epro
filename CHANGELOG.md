@@ -1,7 +1,7 @@
 # Mpro - Changelog
 
 ## Próxima versão - HCR na opção 7/H
-- HCR: aumenta o tempo de espera do polling de download para 120s e remove limites de runtime/início da unit systemd, evitando que sessões ociosas sejam encerradas prematuramente.
+- HCR: corrige o polling para o limite compatível de 30s e restaura automaticamente a unit anterior se o restart após tuning falhar.
 
 ### Corrigido
 - A opção 1 foi alinhada ao protocolo do WZPRO: `101 Switching Protocols`, leitura de até 1024 bytes e `200 <status>`, com seleção de backend após 200 ms; os caminhos HCR e multiprotocolo permanecem separados e inalterados.
