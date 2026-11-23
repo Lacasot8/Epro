@@ -1,6 +1,7 @@
 # Mpro - Changelog
 
 ## Próxima versão - HCR na opção 7/H
+- HCR: usa frames de download de 32 KiB e limita a fila TCP de bytes não enviados também no relay HCR, equilibrando vazão de Speedtest, upload e ping.
 - HCR: corrige o polling para o limite compatível de 30s e restaura automaticamente a unit anterior se o restart após tuning falhar.
 
 ### Corrigido
