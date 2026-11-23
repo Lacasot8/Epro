@@ -118,11 +118,12 @@ async fn handle_client_protocol(
     multiprotocol_enabled: bool,
     hcr_enabled: bool,
 ) -> Result<(), Error> {
-    // HCR e o fluxo normal da opção 1 podem coexistir sem ativar o dispatcher.
-    // O cliente HCR usado no aplicativo espera o HTTP 101 antes de enviar o
-    // primeiro frame. Envie esse handshake primeiro, detecte HCR sem consumir
-    // bytes e, se não for HCR, continue no fluxo original da opção 1.
-    if hcr_enabled && !multiprotocol_enabled {
+    // HCR precisa ser detectado antes de qualquer dispatcher, inclusive quando
+    // o multiprotocolo também está ativo. Sem isso, o GET /hcr da porta 80 era
+    // classificado como HTTP comum e nunca recebia o 101 do relay HCR.
+    // A detecção usa peek, portanto o fluxo normal continua intacto quando não
+    // se trata de HCR.
+    if hcr_enabled {
         match protocol::detect_hcr(&client_stream).await? {
             protocol::HcrMatch::Raw => {
                 println!("[HCR] Frame detectado; encaminhando ao servidor oficial");
