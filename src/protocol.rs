@@ -228,7 +228,15 @@ async fn detect_hcr_http_upgrade(stream: &TcpStream) -> io::Result<HcrMatch> {
 }
 
 fn find_header_end(data: &[u8]) -> Option<usize> {
-    data.windows(4).position(|window| window == b"\r\n\r\n").map(|position| position + 4)
+    if let Some(position) = data.windows(4).position(|window| window == b"\r\n\r\n") {
+        return Some(position + 4);
+    }
+    // Alguns campos de payload do Android normalizam as quebras de linha
+    // para LF. Aceitar também LF-LF evita que o pedido HCR caia no handler
+    // HTTP comum, que depois entrega os frames binários diretamente ao sshd.
+    data.windows(2)
+        .position(|window| window == b"\n\n")
+        .map(|position| position + 2)
 }
 
 fn classify_hcr_http_request(header: &[u8]) -> HcrMatch {

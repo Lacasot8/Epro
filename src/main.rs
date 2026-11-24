@@ -36,6 +36,9 @@ async fn main() -> Result<(), Error> {
 
     println!("[Epro] Proxy TCP v2.6.0");
     println!("[TCP] Porta: {}", port);
+    if hcr_enabled {
+        println!("[HCR] Suporte por porta: ON ({})", port);
+    }
     if multiprotocol_enabled {
         println!(
             "[MULTIPROTOCOLO] Detecção automática habilitada; status: {}",
