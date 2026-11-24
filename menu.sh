@@ -20,8 +20,8 @@ HCR_DOWNLOAD_POLL_TIMEOUT="30s"
 # 16 KiB é o frame mais compatível com clientes HCR e redes móveis.
 HCR_DOWNLOAD_FRAME="16384"
 HCR_MAX_CONNECTIONS="4096"
-HCR_MAX_SESSIONS="128"
-HCR_MAX_SESSIONS_PER_IP="64"
+HCR_MAX_SESSIONS="1024"
+HCR_MAX_SESSIONS_PER_IP="1024"
 HCR_BINARY_CANDIDATES=("${BYPASS_DIR}/hcr-server" "/opt/hcr-server/hcr-server" "/usr/local/bin/hcr-server" "/usr/bin/hcr-server")
 # O binário validado é mantido no próprio repositório Epro; HCR_SOURCE_URL
 # ainda pode substituir essa origem por um mirror HTTPS confiável.
@@ -693,9 +693,9 @@ hcr_apply_capacity_tuning() {
 
     if grep -q -- "-max-connections" <<<"$HELP" && ! grep -Eq '^[[:space:]]*ExecStart=.*-max-connections[[:space:]]+4096([[:space:]]|$)' "$SERVICE_FILE"; then
         :
-    elif grep -q -- "-max-sessions int" <<<"$HELP" && ! grep -Eq '^[[:space:]]*ExecStart=.*-max-sessions[[:space:]]+128([[:space:]]|$)' "$SERVICE_FILE"; then
+    elif grep -q -- "-max-sessions int" <<<"$HELP" && ! grep -Eq '^[[:space:]]*ExecStart=.*-max-sessions[[:space:]]+1024([[:space:]]|$)' "$SERVICE_FILE"; then
         :
-    elif grep -q -- "-max-sessions-per-ip" <<<"$HELP" && ! grep -Eq '^[[:space:]]*ExecStart=.*-max-sessions-per-ip[[:space:]]+64([[:space:]]|$)' "$SERVICE_FILE"; then
+    elif grep -q -- "-max-sessions-per-ip" <<<"$HELP" && ! grep -Eq '^[[:space:]]*ExecStart=.*-max-sessions-per-ip[[:space:]]+1024([[:space:]]|$)' "$SERVICE_FILE"; then
         :
     else
         return 0
@@ -712,20 +712,20 @@ hcr_apply_capacity_tuning() {
     fi
     if grep -q -- "-max-sessions int" <<<"$HELP"; then
         if grep -Eq '^[[:space:]]*ExecStart=.*-max-sessions([=[:space:]]|$)' "$SERVICE_FILE"; then
-            sed -i -E '/^[[:space:]]*ExecStart=.*hcr-server/ { s/(-{1,2}max-sessions)=([0-9]+)/\1 128/; s/(-{1,2}max-sessions)[[:space:]]+[0-9]+/\1 128/; }' "$SERVICE_FILE"
+            sed -i -E '/^[[:space:]]*ExecStart=.*hcr-server/ { s/(-{1,2}max-sessions)=([0-9]+)/\1 1024/; s/(-{1,2}max-sessions)[[:space:]]+[0-9]+/\1 1024/; }' "$SERVICE_FILE"
         else
-            sed -i -E '/^[[:space:]]*ExecStart=.*hcr-server/ s/[[:space:]]*$/ -max-sessions 128/' "$SERVICE_FILE"
+            sed -i -E '/^[[:space:]]*ExecStart=.*hcr-server/ s/[[:space:]]*$/ -max-sessions 1024/' "$SERVICE_FILE"
         fi
     fi
     if grep -q -- "-max-sessions-per-ip" <<<"$HELP"; then
         if grep -Eq '^[[:space:]]*ExecStart=.*-max-sessions-per-ip([=[:space:]]|$)' "$SERVICE_FILE"; then
-            sed -i -E '/^[[:space:]]*ExecStart=.*hcr-server/ { s/(-{1,2}max-sessions-per-ip)=([0-9]+)/\1 64/; s/(-{1,2}max-sessions-per-ip)[[:space:]]+[0-9]+/\1 64/; }' "$SERVICE_FILE"
+            sed -i -E '/^[[:space:]]*ExecStart=.*hcr-server/ { s/(-{1,2}max-sessions-per-ip)=([0-9]+)/\1 1024/; s/(-{1,2}max-sessions-per-ip)[[:space:]]+[0-9]+/\1 1024/; }' "$SERVICE_FILE"
         else
-            sed -i -E '/^[[:space:]]*ExecStart=.*hcr-server/ s/[[:space:]]*$/ -max-sessions-per-ip 64/' "$SERVICE_FILE"
+            sed -i -E '/^[[:space:]]*ExecStart=.*hcr-server/ s/[[:space:]]*$/ -max-sessions-per-ip 1024/' "$SERVICE_FILE"
         fi
     fi
     if systemctl daemon-reload >/dev/null 2>&1; then
-        echo -e "${GREEN}Limites HCR ajustados: 4096 conexões, 128 sessões e 64 sessões por origem.${NC}"
+        echo -e "${GREEN}Limites HCR ajustados: 4096 conexões, 1024 sessões e 1024 sessões por origem.${NC}"
         return 0
     fi
     cp -a -- "$BACKUP" "$SERVICE_FILE"

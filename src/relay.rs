@@ -10,7 +10,6 @@ const TCP_NOTSENT_LOWAT_BYTES: libc::c_uint = 64 * 1024;
 const TCP_KEEPIDLE_SECS: libc::c_int = 20;
 const TCP_KEEPINTVL_SECS: libc::c_int = 10;
 const TCP_KEEPCNT: libc::c_int = 6;
-const TCP_USER_TIMEOUT_MSECS: libc::c_uint = 120_000;
 
 /// Ajustes seguros para túneis TCP interativos e transferências contínuas.
 ///
@@ -156,13 +155,6 @@ pub fn tune_hcr_stream(stream: &TcpStream) {
             libc::TCP_QUICKACK,
             &quickack as *const _ as *const libc::c_void,
             std::mem::size_of_val(&quickack) as libc::socklen_t,
-        );
-        let _ = libc::setsockopt(
-            fd,
-            libc::IPPROTO_TCP,
-            libc::TCP_USER_TIMEOUT,
-            &TCP_USER_TIMEOUT_MSECS as *const _ as *const libc::c_void,
-            std::mem::size_of_val(&TCP_USER_TIMEOUT_MSECS) as libc::socklen_t,
         );
     }
 }

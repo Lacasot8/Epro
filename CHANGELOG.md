@@ -1,6 +1,7 @@
 # Mpro - Changelog
 
 ## Próxima versão - HCR na opção 7/H
+- HCR: remove `TCP_USER_TIMEOUT` do relay e amplia para 1024 sessões/1024 por origem, evitando encerramentos e bloqueios durante Speedtest multiconexão.
 - HCR: reverte o frame de 32 KiB e o `TCP_NOTSENT_LOWAT` experimental no canal HCR após incompatibilidades de estabilidade; restaura 16 KiB e tuning conservador.
 - HCR: corrige o polling para o limite compatível de 30s e restaura automaticamente a unit anterior se o restart após tuning falhar.
 
