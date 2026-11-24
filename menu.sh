@@ -17,9 +17,8 @@ HCR_SSH_TARGET="127.0.0.1:22"
 # O hcr-server 0.1.29 aceita até 30s para o polling de download. O cliente
 # usa keepalive próprio; manter esse valor evita que a unit rejeite o início.
 HCR_DOWNLOAD_POLL_TIMEOUT="30s"
-# 32 KiB reduz polls e overhead no Speedtest sem criar blocos grandes demais
-# para as rotas móveis que apresentaram incompatibilidade com 64 KiB.
-HCR_DOWNLOAD_FRAME="32768"
+# 16 KiB é o frame mais compatível com clientes HCR e redes móveis.
+HCR_DOWNLOAD_FRAME="16384"
 HCR_MAX_CONNECTIONS="4096"
 HCR_MAX_SESSIONS="128"
 HCR_MAX_SESSIONS_PER_IP="64"

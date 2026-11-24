@@ -149,15 +149,6 @@ pub fn tune_hcr_stream(stream: &TcpStream) {
             &TCP_KEEPCNT as *const _ as *const libc::c_void,
             std::mem::size_of_val(&TCP_KEEPCNT) as libc::socklen_t,
         );
-        // Mantém o upload responsivo sob carga: limita a fila de bytes
-        // pendentes sem usar o tuning agressivo de BBR neste canal.
-        let _ = libc::setsockopt(
-            fd,
-            libc::IPPROTO_TCP,
-            libc::TCP_NOTSENT_LOWAT,
-            &TCP_NOTSENT_LOWAT_BYTES as *const _ as *const libc::c_void,
-            std::mem::size_of_val(&TCP_NOTSENT_LOWAT_BYTES) as libc::socklen_t,
-        );
         let quickack: libc::c_int = 1;
         let _ = libc::setsockopt(
             fd,
