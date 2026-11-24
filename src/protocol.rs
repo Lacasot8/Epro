@@ -7,7 +7,10 @@ use tokio::time::{sleep, timeout, Duration};
 const MAX_PEEK: usize = 16 * 1024;
 const DETECT_TIMEOUT: Duration = Duration::from_millis(800);
 const HCR_HEADER_SIZE: usize = 62;
-const HCR_MAX_PAYLOAD: u32 = 1_048_576;
+// O framing HCR validado pelo cliente e pelo servidor oficial aceita até
+// 256 KiB por frame. Um limite maior deixa o relay encaminhar um upload que
+// o hcr-server rejeita, encerrando o teste justamente na etapa de upload.
+const HCR_MAX_PAYLOAD: u32 = 262_144;
 // Redes móveis podem atrasar o primeiro byte do canal HCR, especialmente na
 // porta 80. A espera só é aplicada quando a conexão ainda está silenciosa e o
 // byte inicial é um opcode HCR (1..6); SSH/HTTP continuam sendo encaminhados

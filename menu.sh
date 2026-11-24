@@ -19,6 +19,8 @@ HCR_SSH_TARGET="127.0.0.1:22"
 HCR_DOWNLOAD_POLL_TIMEOUT="30s"
 # 16 KiB é o frame mais compatível com clientes HCR e redes móveis.
 HCR_DOWNLOAD_FRAME="16384"
+# O framing validado pelo APK/servidor aceita até 256 KiB por upload.
+HCR_UPLOAD_FRAME="262144"
 HCR_MAX_CONNECTIONS="4096"
 HCR_MAX_SESSIONS="1024"
 HCR_MAX_SESSIONS_PER_IP="1024"
@@ -597,11 +599,14 @@ hcr_ensure_binary() {
 
 # Descobre o formato de argumentos aceito pelo binário instalado.
 hcr_exec_args() {
-    local PORT="$1" BINARY="$2" HELP="" FRAME_ARGS="" POLL_ARGS="" CAPACITY_ARGS=""
+    local PORT="$1" BINARY="$2" HELP="" FRAME_ARGS="" UPLOAD_FRAME_ARGS="" POLL_ARGS="" CAPACITY_ARGS=""
 
     HELP=$(timeout 5 "$BINARY" -h 2>&1 </dev/null) || true
     if grep -q -- "-max-download-frame" <<<"$HELP"; then
         FRAME_ARGS=" -max-download-frame ${HCR_DOWNLOAD_FRAME}"
+    fi
+    if grep -q -- "-max-upload-frame" <<<"$HELP"; then
+        UPLOAD_FRAME_ARGS=" -max-upload-frame ${HCR_UPLOAD_FRAME}"
     fi
     if grep -q -- "-download-poll-timeout" <<<"$HELP"; then
         POLL_ARGS=" -download-poll-timeout ${HCR_DOWNLOAD_POLL_TIMEOUT}"
@@ -616,17 +621,20 @@ hcr_exec_args() {
         CAPACITY_ARGS+=" -max-sessions-per-ip ${HCR_MAX_SESSIONS_PER_IP}"
     fi
     if grep -q -- "-listen" <<<"$HELP"; then
-        printf '%s' "-listen :${PORT} -target ${HCR_SSH_TARGET} -transport plain${FRAME_ARGS}${POLL_ARGS}${CAPACITY_ARGS}"
+        printf '%s' "-listen :${PORT} -target ${HCR_SSH_TARGET} -transport plain${FRAME_ARGS}${UPLOAD_FRAME_ARGS}${POLL_ARGS}${CAPACITY_ARGS}"
     else
-        printf '%s' "--port ${PORT} --transport plain${FRAME_ARGS}${POLL_ARGS}${CAPACITY_ARGS}"
+        printf '%s' "--port ${PORT} --transport plain${FRAME_ARGS}${UPLOAD_FRAME_ARGS}${POLL_ARGS}${CAPACITY_ARGS}"
     fi
 }
 
 hcr_alternate_args() {
-    local ARGS="$1" PORT="$2" FRAME_ARGS="" POLL_ARGS="" CAPACITY_ARGS=""
+    local ARGS="$1" PORT="$2" FRAME_ARGS="" UPLOAD_FRAME_ARGS="" POLL_ARGS="" CAPACITY_ARGS=""
 
     if [[ "$ARGS" == *"-max-download-frame"* ]]; then
         FRAME_ARGS=" -max-download-frame ${HCR_DOWNLOAD_FRAME}"
+    fi
+    if [[ "$ARGS" == *"-max-upload-frame"* ]]; then
+        UPLOAD_FRAME_ARGS=" -max-upload-frame ${HCR_UPLOAD_FRAME}"
     fi
     if [[ "$ARGS" == *"-download-poll-timeout"* ]]; then
         POLL_ARGS=" -download-poll-timeout ${HCR_DOWNLOAD_POLL_TIMEOUT}"
@@ -636,9 +644,9 @@ hcr_alternate_args() {
     [[ "$ARGS" == *"-max-sessions-per-ip"* ]] && CAPACITY_ARGS+=" -max-sessions-per-ip ${HCR_MAX_SESSIONS_PER_IP}"
 
     if [[ "$ARGS" == -listen* ]]; then
-        printf '%s' "--port ${PORT} --transport plain${FRAME_ARGS}${POLL_ARGS}${CAPACITY_ARGS}"
+        printf '%s' "--port ${PORT} --transport plain${FRAME_ARGS}${UPLOAD_FRAME_ARGS}${POLL_ARGS}${CAPACITY_ARGS}"
     else
-        printf '%s' "-listen :${PORT} -target ${HCR_SSH_TARGET} -transport plain${FRAME_ARGS}${POLL_ARGS}${CAPACITY_ARGS}"
+        printf '%s' "-listen :${PORT} -target ${HCR_SSH_TARGET} -transport plain${FRAME_ARGS}${UPLOAD_FRAME_ARGS}${POLL_ARGS}${CAPACITY_ARGS}"
     fi
 }
 
@@ -678,6 +686,32 @@ hcr_apply_download_frame_tuning() {
         systemctl daemon-reload >/dev/null 2>&1 || true
         return 1
     fi
+}
+
+hcr_apply_upload_frame_tuning() {
+    local BINARY="$1" SERVICE_FILE="$2" HELP="" BACKUP=""
+
+    [[ -x "$BINARY" && -f "$SERVICE_FILE" ]] || return 0
+    HELP=$(timeout 5 "$BINARY" -h 2>&1 </dev/null) || true
+    grep -q -- "-max-upload-frame" <<<"$HELP" || return 0
+    grep -Eq '^[[:space:]]*ExecStart=.*hcr-server' "$SERVICE_FILE" || return 0
+    grep -Eq "^[[:space:]]*ExecStart=.*-max-upload-frame[[:space:]]+${HCR_UPLOAD_FRAME}([[:space:]]|$)" "$SERVICE_FILE" && return 0
+
+    BACKUP="${SERVICE_FILE}.bak.$(date +%Y%m%d-%H%M%S)"
+    cp -a -- "$SERVICE_FILE" "$BACKUP" || return 1
+    if grep -Eq '^[[:space:]]*ExecStart=.*max-upload-frame([=[:space:]]|$)' "$SERVICE_FILE"; then
+        sed -i -E "/^[[:space:]]*ExecStart=.*hcr-server/ { s/(-{1,2}max-upload-frame)=([0-9]+)/\\1 ${HCR_UPLOAD_FRAME}/; s/(-{1,2}max-upload-frame)[[:space:]]+[0-9]+/\\1 ${HCR_UPLOAD_FRAME}/; }" "$SERVICE_FILE"
+    else
+        sed -i -E "/^[[:space:]]*ExecStart=.*hcr-server/ s/[[:space:]]*$/ -max-upload-frame ${HCR_UPLOAD_FRAME}/" "$SERVICE_FILE"
+    fi
+    if grep -Eq "^[[:space:]]*ExecStart=.*-max-upload-frame[[:space:]]+${HCR_UPLOAD_FRAME}([[:space:]]|$)" "$SERVICE_FILE" &&
+        systemctl daemon-reload >/dev/null 2>&1; then
+        echo -e "${GREEN}Limite de upload HCR aplicado: $((HCR_UPLOAD_FRAME / 1024)) KiB.${NC}"
+        return 0
+    fi
+    cp -a -- "$BACKUP" "$SERVICE_FILE"
+    systemctl daemon-reload >/dev/null 2>&1 || true
+    return 1
 }
 
 hcr_apply_capacity_tuning() {
@@ -994,6 +1028,9 @@ hcr_open_port() {
         if ! hcr_apply_download_frame_tuning "$BINARY" "$SERVICE_FILE"; then
             echo -e "${YELLOW}Não foi possível ajustar o tamanho dos blocos de download HCR; mantendo a configuração atual.${NC}"
         fi
+        if ! hcr_apply_upload_frame_tuning "$BINARY" "$SERVICE_FILE"; then
+            echo -e "${YELLOW}Não foi possível ajustar o tamanho dos blocos de upload HCR; mantendo a configuração atual.${NC}"
+        fi
         if ! hcr_apply_capacity_tuning "$BINARY" "$SERVICE_FILE"; then
             echo -e "${YELLOW}Não foi possível ajustar os limites de sessões HCR; mantendo a configuração atual.${NC}"
         fi
@@ -1021,6 +1058,9 @@ hcr_open_port() {
             hcr_apply_session_config || true
             if ! hcr_apply_download_frame_tuning "$BINARY" "$SERVICE_FILE"; then
                 echo -e "${YELLOW}Não foi possível ajustar o tamanho dos blocos de download HCR; mantendo a configuração atual.${NC}"
+            fi
+            if ! hcr_apply_upload_frame_tuning "$BINARY" "$SERVICE_FILE"; then
+                echo -e "${YELLOW}Não foi possível ajustar o tamanho dos blocos de upload HCR; mantendo a configuração atual.${NC}"
             fi
             if ! hcr_apply_capacity_tuning "$BINARY" "$SERVICE_FILE"; then
                 echo -e "${YELLOW}Não foi possível ajustar os limites de sessões HCR; mantendo a configuração atual.${NC}"
