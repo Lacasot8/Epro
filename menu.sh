@@ -273,7 +273,7 @@ box_bottom() {
 }
 
 show_banner() {
-    echo -e "${CYAN}${BOLD}A Z P R O  P R O T O C O L O  F R E Eシ︎ ᡕᠵ᠊ᡃ່࡚ࠢ࠘ ⸝່ࠡࠣ᠊߯᠆ࠣ࠘ᡁࠣ࠘᠊᠊ࠢ࠘𐡏°°°°°  ༒︎${NC}"
+    echo -e "${CYAN}${BOLD}A Z P R O  P R O T O C O L O 👋シ︎ ᡕᠵ᠊ᡃ່࡚ࠢ࠘ ⸝່ࠡࠣ᠊߯᠆ࠣ࠘ᡁࠣ࠘᠊᠊ࠢ࠘𐡏°°°°°  ༒︎${NC}"
 }
 
 has_any_multiprotocol_enabled() {
