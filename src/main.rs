@@ -121,12 +121,10 @@ async fn handle_client_protocol(
     multiprotocol_enabled: bool,
     hcr_enabled: bool,
 ) -> Result<(), Error> {
-    // HCR precisa ser detectado antes de qualquer dispatcher, inclusive quando
-    // o multiprotocolo também está ativo. Sem isso, o GET /hcr da porta 80 era
-    // classificado como HTTP comum e nunca recebia o 101 do relay HCR.
-    // A detecção usa peek, portanto o fluxo normal continua intacto quando não
-    // se trata de HCR.
-    if hcr_enabled {
+    // A opção 1 é server-first, então mantém a sondagem HCR curta antes de seu
+    // handshake. No multiprotocolo, o dispatcher espera o primeiro protocolo e
+    // revalida HCR depois para não classificar um upgrade tardio como WebSocket.
+    if hcr_enabled && !multiprotocol_enabled {
         match protocol::detect_hcr(&client_stream).await? {
             protocol::HcrMatch::Raw => {
                 println!("[HCR] Frame detectado; encaminhando ao servidor oficial");
@@ -173,7 +171,20 @@ async fn handle_multiprotocol_client(
     ssh_only: bool,
     hcr_enabled: bool,
 ) -> Result<(), Error> {
-    let detected = protocol::detect_from_stream(&client_stream).await?;
+    let route = detect_multiprotocol_route(&client_stream, hcr_enabled).await?;
+    let detected = match route {
+        MultiprotocolRoute::HcrRaw => {
+            println!("[HCR] Frame detectado no multiprotocolo; encaminhando ao servidor oficial");
+            return tls::handle_hcr(client_stream)
+                .await
+                .map_err(|e| Error::new(ErrorKind::Other, format!("HCR: {e}")));
+        }
+        MultiprotocolRoute::HcrHttpUpgrade { header_len, response } => {
+            println!("[HCR] Upgrade HTTP /hcr detectado no multiprotocolo");
+            return handle_hcr_http_upgrade(client_stream, header_len, &response).await;
+        }
+        MultiprotocolRoute::Protocol(detected) => detected,
+    };
     println!("[MULTIPROTOCOLO] Detectado: {:?}", detected);
 
     match detected {
@@ -580,15 +591,51 @@ fn has_arg(arg: &str) -> bool {
     env::args().any(|a| a == arg)
 }
 
+enum MultiprotocolRoute {
+    HcrRaw,
+    HcrHttpUpgrade { header_len: usize, response: Vec<u8> },
+    Protocol(Protocol),
+}
+
+async fn detect_multiprotocol_route(
+    client_stream: &TcpStream,
+    hcr_enabled: bool,
+) -> Result<MultiprotocolRoute, Error> {
+    let detected = protocol::detect_from_stream(client_stream).await?;
+    if hcr_enabled {
+        match detected {
+            Protocol::Hcr => return Ok(MultiprotocolRoute::HcrRaw),
+            Protocol::Http | Protocol::WebSocket => {
+                match protocol::detect_hcr(client_stream).await? {
+                    protocol::HcrMatch::Raw => return Ok(MultiprotocolRoute::HcrRaw),
+                    protocol::HcrMatch::HttpUpgrade { header_len, response } => {
+                        return Ok(MultiprotocolRoute::HcrHttpUpgrade {
+                            header_len,
+                            response,
+                        });
+                    }
+                    protocol::HcrMatch::None => {}
+                }
+            }
+            // SOCKS4/5 compartilham o primeiro byte 0x04/0x05 com opcodes HCR.
+            // O dispatcher já os identificou; não aguarde um frame HCR impossível.
+            _ => {}
+        }
+    }
+    Ok(MultiprotocolRoute::Protocol(detected))
+}
+
 #[cfg(test)]
 mod tests {
     use super::{
-        bypass_enabled_in, find_http_header_end, handle_client_protocol, hcr_enabled_in,
-        http_handshake_followup, http_status_response, multiprotocol_enabled_in,
-        option_one_followup, option_one_initial_response, strip_http_decoy_prefix,
+        bypass_enabled_in, detect_multiprotocol_route, find_http_header_end,
+        handle_client_protocol, hcr_enabled_in, http_handshake_followup,
+        http_status_response, multiprotocol_enabled_in, option_one_followup,
+        option_one_initial_response, strip_http_decoy_prefix, MultiprotocolRoute,
+        Protocol,
     };
     use std::path::Path;
-    use tokio::io::AsyncReadExt;
+    use tokio::io::{AsyncReadExt, AsyncWriteExt};
     use tokio::net::{TcpListener, TcpStream};
     use tokio::time::{timeout, Duration};
 
@@ -608,6 +655,7 @@ mod tests {
         assert!(!bypass_enabled_in(80, &directory));
         std::fs::write(directory.join("hcr-80.enabled"), b"").unwrap();
         assert!(hcr_enabled_in(80, &directory));
+        assert!(multiprotocol_enabled_in(80, &directory));
         assert!(!hcr_enabled_in(443, &directory));
         std::fs::remove_dir_all(Path::new(&directory)).unwrap();
     }
@@ -677,6 +725,106 @@ mod tests {
         drop(client);
         server.abort();
         let _ = server.await;
+    }
+
+    #[tokio::test]
+    async fn multiprotocol_with_hcr_routes_late_marked_upgrade_to_hcr() {
+        let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let address = listener.local_addr().unwrap();
+        let request = b"GET /hcr HTTP/1.1\r\nHost: vps\r\nUpgrade: websocket\r\nConnection: Upgrade\r\nSec-WebSocket-Key: dGhlIHNhbXBsZSBub25jZQ==\r\nSec-WebSocket-Version: 13\r\nX-AzPro-HCR: 1\r\n\r\n".to_vec();
+        let expected_request = request.clone();
+        let client = tokio::spawn(async move {
+            let mut stream = TcpStream::connect(address).await.unwrap();
+            tokio::time::sleep(Duration::from_millis(400)).await;
+            stream.write_all(&request).await.unwrap();
+        });
+        let (server, _) = listener.accept().await.unwrap();
+
+        let route = timeout(
+            Duration::from_secs(2),
+            detect_multiprotocol_route(&server, true),
+        )
+        .await
+        .expect("a opção 7 deve classificar o HCR que chega após a sondagem inicial")
+        .unwrap();
+        match route {
+            MultiprotocolRoute::HcrHttpUpgrade { header_len, response } => {
+                assert_eq!(header_len, expected_request.len());
+                assert!(String::from_utf8(response)
+                    .unwrap()
+                    .contains("Sec-WebSocket-Accept: s3pPLMBiTxaQ9kYGzzhZRbK+xOo="));
+                let mut peeked = vec![0u8; expected_request.len()];
+                let bytes = server.peek(&mut peeked).await.unwrap();
+                assert_eq!(&peeked[..bytes], expected_request.as_slice());
+            }
+            _ => panic!("upgrade HCR tardio não foi roteado para o backend HCR"),
+        }
+        client.await.unwrap();
+    }
+
+    #[tokio::test]
+    async fn multiprotocol_with_hcr_keeps_ordinary_websocket_on_websocket_route() {
+        let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let address = listener.local_addr().unwrap();
+        let request = b"GET /ws HTTP/1.1\r\nHost: vps\r\nUpgrade: websocket\r\nConnection: Upgrade\r\nSec-WebSocket-Key: dGhlIHNhbXBsZSBub25jZQ==\r\nSec-WebSocket-Version: 13\r\n\r\n".to_vec();
+        let client = tokio::spawn(async move {
+            let mut stream = TcpStream::connect(address).await.unwrap();
+            stream.write_all(&request).await.unwrap();
+        });
+        let (server, _) = listener.accept().await.unwrap();
+
+        let route = detect_multiprotocol_route(&server, true).await.unwrap();
+        assert!(matches!(
+            route,
+            MultiprotocolRoute::Protocol(Protocol::WebSocket)
+        ));
+        client.await.unwrap();
+    }
+
+    #[tokio::test]
+    async fn multiprotocol_with_hcr_routes_raw_frames_to_hcr() {
+        let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let address = listener.local_addr().unwrap();
+        let mut frame = vec![0u8; 62]; // Cabeçalho HCR de 62 bytes.
+        frame[0] = 1;
+        frame[1] = 1;
+        let client = tokio::spawn(async move {
+            let mut stream = TcpStream::connect(address).await.unwrap();
+            stream.write_all(&frame).await.unwrap();
+        });
+        let (server, _) = listener.accept().await.unwrap();
+
+        let route = detect_multiprotocol_route(&server, true).await.unwrap();
+        assert!(matches!(route, MultiprotocolRoute::HcrRaw));
+        client.await.unwrap();
+    }
+
+    #[tokio::test]
+    async fn multiprotocol_with_hcr_does_not_block_socks4_or_socks5() {
+        let cases: [(&[u8], Protocol); 2] = [
+            (b"\x04\x01\x00\x50\x7f\x00\x00\x01user\x00", Protocol::Socks4),
+            (b"\x05\x01\x00", Protocol::Socks5),
+        ];
+        for (request, expected) in cases {
+            let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
+            let address = listener.local_addr().unwrap();
+            let request = request.to_vec();
+            let client = tokio::spawn(async move {
+                let mut stream = TcpStream::connect(address).await.unwrap();
+                stream.write_all(&request).await.unwrap();
+            });
+            let (server, _) = listener.accept().await.unwrap();
+
+            let route = timeout(
+                Duration::from_secs(2),
+                detect_multiprotocol_route(&server, true),
+            )
+            .await
+            .expect("SOCKS não deve esperar pelo cabeçalho HCR de 62 bytes")
+            .unwrap();
+            assert!(matches!(route, MultiprotocolRoute::Protocol(protocol) if protocol == expected));
+            client.await.unwrap();
+        }
     }
 
     #[test]
