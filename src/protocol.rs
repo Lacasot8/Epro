@@ -13,9 +13,9 @@ const HCR_HEADER_SIZE: usize = 62;
 const HCR_MAX_PAYLOAD: u32 = 262_144;
 // A opção 1 é server-first: sem bytes do cliente, ela precisa receber o 101
 // imediatamente. Clientes HCR enviam o upgrade HTTP ou o primeiro frame logo
-// após conectar, então só damos uma pequena janela para distingui-los sem
-// atrasar a opção 1 por segundos em portas com HCR habilitado.
-const HCR_FIRST_BYTE_TIMEOUT: Duration = Duration::from_millis(100);
+// após conectar; a janela de 250 ms absorve alguma latência móvel sem atrasar
+// a opção 1 pelos 2 s da configuração anterior.
+const HCR_FIRST_BYTE_TIMEOUT: Duration = Duration::from_millis(250);
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Protocol {
