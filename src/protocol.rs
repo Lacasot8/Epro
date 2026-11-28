@@ -11,11 +11,11 @@ const HCR_HEADER_SIZE: usize = 62;
 // 256 KiB por frame. Um limite maior deixa o relay encaminhar um upload que
 // o hcr-server rejeita, encerrando o teste justamente na etapa de upload.
 const HCR_MAX_PAYLOAD: u32 = 262_144;
-// Redes móveis podem atrasar o primeiro byte do canal HCR, especialmente na
-// porta 80. A espera só é aplicada quando a conexão ainda está silenciosa e o
-// byte inicial é um opcode HCR (1..6); SSH/HTTP continuam sendo encaminhados
-// imediatamente pelo fluxo normal da opção 1.
-const HCR_FIRST_BYTE_TIMEOUT: Duration = Duration::from_secs(2);
+// A opção 1 é server-first: sem bytes do cliente, ela precisa receber o 101
+// imediatamente. Clientes HCR enviam o upgrade HTTP ou o primeiro frame logo
+// após conectar, então só damos uma pequena janela para distingui-los sem
+// atrasar a opção 1 por segundos em portas com HCR habilitado.
+const HCR_FIRST_BYTE_TIMEOUT: Duration = Duration::from_millis(100);
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Protocol {
@@ -441,8 +441,8 @@ fn starts_with_ascii_case_insensitive(data: &[u8], prefix: &[u8]) -> bool {
 #[cfg(test)]
 mod tests {
     use super::{
-        classify_after_protocol_timeout, detect_protocol, has_expect_continue,
-        is_incomplete_http_message, Protocol, HCR_HEADER_SIZE, HCR_MAX_PAYLOAD,
+        classify_after_protocol_timeout, detect_hcr, detect_protocol, has_expect_continue,
+        is_incomplete_http_message, HcrMatch, Protocol, HCR_HEADER_SIZE, HCR_MAX_PAYLOAD,
     };
 
     #[test]
@@ -481,7 +481,7 @@ mod tests {
 
     #[tokio::test]
     async fn detects_marked_hcr_http_upgrade_without_consuming_request() {
-        use tokio::io::{AsyncReadExt, AsyncWriteExt};
+        use tokio::io::AsyncWriteExt;
         use tokio::net::{TcpListener, TcpStream};
         let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
         let address = listener.local_addr().unwrap();
