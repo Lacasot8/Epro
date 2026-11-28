@@ -617,8 +617,25 @@ async fn detect_multiprotocol_route(
                     protocol::HcrMatch::None => {}
                 }
             }
-            // SOCKS4/5 compartilham o primeiro byte 0x04/0x05 com opcodes HCR.
-            // O dispatcher já os identificou; não aguarde um frame HCR impossível.
+            Protocol::Unknown => {
+                // O dispatcher pode expirar antes de um frame cru terminar de
+                // chegar. Só rechecamos uma assinatura binária HCR inequívoca;
+                // 0x04/0x05 ficam de fora por serem prefixos compartilhados com
+                // SOCKS4/5, e Unknowns comuns seguem no fallback original.
+                let mut prefix = [0u8; 2];
+                let bytes = client_stream.peek(&mut prefix).await?;
+                let hcr_prefix = bytes == 2
+                    && matches!(prefix[0], 0x01 | 0x02 | 0x03 | 0x06)
+                    && prefix[1] == 0x01;
+                if hcr_prefix
+                    && matches!(
+                        protocol::detect_hcr(client_stream).await?,
+                        protocol::HcrMatch::Raw
+                    )
+                {
+                    return Ok(MultiprotocolRoute::HcrRaw);
+                }
+            }
             _ => {}
         }
     }
@@ -795,6 +812,32 @@ mod tests {
         let (server, _) = listener.accept().await.unwrap();
 
         let route = detect_multiprotocol_route(&server, true).await.unwrap();
+        assert!(matches!(route, MultiprotocolRoute::HcrRaw));
+        client.await.unwrap();
+    }
+
+    #[tokio::test]
+    async fn multiprotocol_with_hcr_routes_fragmented_raw_frames_after_dispatch_timeout() {
+        let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let address = listener.local_addr().unwrap();
+        let mut frame = vec![0u8; 62];
+        frame[0] = 1;
+        frame[1] = 1;
+        let client = tokio::spawn(async move {
+            let mut stream = TcpStream::connect(address).await.unwrap();
+            stream.write_all(&frame[..2]).await.unwrap();
+            tokio::time::sleep(Duration::from_millis(1_000)).await;
+            stream.write_all(&frame[2..]).await.unwrap();
+        });
+        let (server, _) = listener.accept().await.unwrap();
+
+        let route = timeout(
+            Duration::from_secs(3),
+            detect_multiprotocol_route(&server, true),
+        )
+        .await
+        .expect("frame HCR fragmentado não deve cair no fallback ao expirar a detecção inicial")
+        .unwrap();
         assert!(matches!(route, MultiprotocolRoute::HcrRaw));
         client.await.unwrap();
     }
